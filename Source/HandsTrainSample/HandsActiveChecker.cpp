@@ -38,6 +38,19 @@ void AHandsActiveChecker::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// HANDSDIAG: temporary diagnostic, remove after debugging hand tracking
+	{
+		static double LastDiagLogTime = 0.0;
+		const double DiagNow = FPlatformTime::Seconds();
+		if (DiagNow - LastDiagLogTime > 1.0)
+		{
+			LastDiagLogTime = DiagNow;
+			UE_LOG(LogTemp, Warning, TEXT("HANDSDIAG checker: pawn=%d leftMesh=%d rightMesh=%d handTrackingEnabled=%d"),
+				IsValid(PlayerPawn), IsValid(LeftMesh), IsValid(RightMesh),
+				UOculusXRInputFunctionLibrary::IsHandTrackingEnabled());
+		}
+	}
+
 	if (!IsValid(PlayerPawn) || !IsValid(LeftMesh) || !IsValid(RightMesh))
 	{
 		return;

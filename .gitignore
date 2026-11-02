@@ -1,0 +1,30 @@
+# Unreal generated output
+/Binaries/
+/Intermediate/
+/Saved/
+/DerivedDataCache/
+
+# Visual Studio / IDE generated files
+/.vs/
+/*.sln
+/*.slnx
+*.VC.db
+*.opendb
+*.suo
+*.user
+
+# Meta SDK plugins: installed per machine, see README.md
+/Plugins/
+/MetaXRInteraction/
+
+# Tool binary the Meta XR plugin downloads on demand
+/Content/Oculus/Tools/
+
+# Generated at packaging time; keep only hand-maintained manifest additions
+/Build/*
+!/Build/Android/
+/Build/Android/*
+!/Build/Android/ManifestRequirementsAdditions.txt
+
+# Local agent settings
+.claude/settings.local.json

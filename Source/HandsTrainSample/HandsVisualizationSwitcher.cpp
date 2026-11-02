@@ -71,6 +71,41 @@ void AHandsVisualizationSwitcher::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// HANDSDIAG: temporary diagnostic, remove after debugging hand tracking
+	{
+		static double LastDiagLogTime = 0.0;
+		const double DiagNow = FPlatformTime::Seconds();
+		if (DiagNow - LastDiagLogTime > 1.0)
+		{
+			LastDiagLogTime = DiagNow;
+			const bool bDiagHandsValid = IsValid(LeftHand) && IsValid(RightHand);
+			UE_LOG(LogTemp, Warning, TEXT("HANDSDIAG hands: leftHidden=%d rightHidden=%d leftProfile=%d rightProfile=%d leftPosValid=%d rightPosValid=%d"),
+				bDiagHandsValid ? LeftHand->bHiddenInGame : -1,
+				bDiagHandsValid ? RightHand->bHiddenInGame : -1,
+				UOculusXRInputFunctionLibrary::IsHandInteractionProfile(EOculusXRHandType::HandLeft),
+				UOculusXRInputFunctionLibrary::IsHandInteractionProfile(EOculusXRHandType::HandRight),
+				UOculusXRInputFunctionLibrary::IsHandPositionValid(EOculusXRHandType::HandLeft),
+				UOculusXRInputFunctionLibrary::IsHandPositionValid(EOculusXRHandType::HandRight));
+			UE_LOG(LogTemp, Warning, TEXT("HANDSDIAG switcher: leftHand=%d rightHand=%d handTrackingEnabled=%d leftConf=%d rightConf=%d leftBonesVisible=%d rightBonesVisible=%d"),
+				IsValid(LeftHand), IsValid(RightHand),
+				UOculusXRInputFunctionLibrary::IsHandTrackingEnabled(),
+				bDiagHandsValid ? static_cast<int32>(UOculusXRInputFunctionLibrary::GetTrackingConfidence(LeftHand->SkeletonType, 0)) : -1,
+				bDiagHandsValid ? static_cast<int32>(UOculusXRInputFunctionLibrary::GetTrackingConfidence(RightHand->SkeletonType, 0)) : -1,
+				bLeftHandBonesVisible, bRightHandBonesVisible);
+		}
+	}
+
+	// Keep the hand meshes visible at low tracking confidence instead of letting the
+	// hand component hide them (the bone visuals below still follow confidence).
+	if (IsValid(LeftHand))
+	{
+		LeftHand->ConfidenceBehavior = EOculusXRConfidenceBehavior::None;
+	}
+	if (IsValid(RightHand))
+	{
+		RightHand->ConfidenceBehavior = EOculusXRConfidenceBehavior::None;
+	}
+
 	if (!IsValid(LeftHand) || !IsValid(RightHand))
 	{
 		return;
