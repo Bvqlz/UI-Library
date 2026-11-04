@@ -9,7 +9,8 @@ For setup, build steps, SDK versions, and project layout, read:
 - `README.md` — official setup, both Epic Launcher and Meta-fork build paths, changelog, known issues
 - `HandsTrainSample.uproject` — engine version association and enabled plugins
 - `Config/` — `DefaultEngine.ini`, `DefaultGame.ini`, Android platform settings
-- `Source/` — C++ module sources
+- `Source/` — the sample's C++ module (scene, furniture task, test tasks, validator bridge)
+- `Plugins/HandTrackingTools`, `Plugins/TaskValidator` — the hand tracker and the validator, committed project plugins. Keep them independent of the sample and of each other (see `docs/PLUGIN_ARCHITECTURE.md`)
 - `Content/` — blueprints, hand-tracking interaction assets (including `LevelBlueprint`)
 - `LICENSE` — license terms
 

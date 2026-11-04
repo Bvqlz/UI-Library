@@ -47,8 +47,12 @@ namespace
 
 TArray<FProductDefinition> UProductCatalogAsset::MakeDefaultProducts()
 {
+	// A chair keeps its proportions, so the Scale / Dimensions tool leaves it alone
+	FProductDefinition Chair = MakeDefinition(TEXT("chair"), TEXT("Chair"), EFurnitureType::Chair, FVector(45.0f, 45.0f, 90.0f));
+	Chair.Capabilities.bResizable = false;
+
 	return {
-		MakeDefinition(TEXT("chair"), TEXT("Chair"), EFurnitureType::Chair, FVector(45.0f, 45.0f, 90.0f)),
+		Chair,
 		MakeDefinition(TEXT("table"), TEXT("Table"), EFurnitureType::Table, FVector(60.0f, 120.0f, 75.0f)),
 		MakeDefinition(TEXT("desk"), TEXT("Desk"), EFurnitureType::Desk, FVector(60.0f, 120.0f, 75.0f)),
 		MakeDefinition(TEXT("sofa"), TEXT("Sofa"), EFurnitureType::Sofa, FVector(85.0f, 190.0f, 80.0f)),

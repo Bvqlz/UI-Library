@@ -17,6 +17,14 @@
 	],
 	"Plugins": [
 		{
+			"Name": "HandTrackingTools",
+			"Enabled": true
+		},
+		{
+			"Name": "TaskValidator",
+			"Enabled": true
+		},
+		{
 			"Name": "OculusXR",
 			"Enabled": true,
 			"SupportedTargetPlatforms": [

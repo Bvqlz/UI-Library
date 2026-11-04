@@ -53,6 +53,65 @@ bool UProductHistorySubsystem::DestroyProduct(const FGuid& Guid)
 	return true;
 }
 
+bool UProductHistorySubsystem::ApplyProductState(
+	const FGuid& Guid, const FProductDefinition& Definition, const FTransform& Transform)
+{
+	const TWeakObjectPtr<AFurnitureProduct>* Found = Products.Find(Guid);
+	AFurnitureProduct* Product = Found ? Found->Get() : nullptr;
+	if (!IsValid(Product))
+	{
+		return false;
+	}
+
+	Product->SetActorTransform(Transform);
+	if (!Product->Definition.SizeCm.Equals(Definition.SizeCm, 0.01f))
+	{
+		Product->InitializeFromDefinition(Definition);
+	}
+	return true;
+}
+
+bool UProductHistorySubsystem::ModifyProduct(
+	AFurnitureProduct* Product, const FTransform& NewTransform, const FProductDefinition& NewDefinition)
+{
+	if (!IsValid(Product) || !Products.Contains(Product->ProductGuid))
+	{
+		OnEditRejected.Broadcast(FText::FromString(TEXT("There is no product to change.")));
+		return false;
+	}
+
+	const FTransform OldTransform = Product->GetActorTransform();
+	const bool bSameTransform = OldTransform.GetLocation().Equals(NewTransform.GetLocation(), 0.1f) &&
+		OldTransform.GetRotation().Equals(NewTransform.GetRotation(), 0.001f);
+	const bool bSameSize = Product->Definition.SizeCm.Equals(NewDefinition.SizeCm, 0.01f);
+	if (bSameTransform && bSameSize)
+	{
+		// Nothing changed, so nothing to undo
+		return false;
+	}
+
+	FProductEdit Edit;
+	Edit.Kind = EProductEditKind::Modify;
+	Edit.ProductGuid = Product->ProductGuid;
+	Edit.Definition = Product->Definition;
+	Edit.Transform = OldTransform;
+	Edit.DefinitionAfter = NewDefinition;
+	Edit.TransformAfter = NewTransform;
+
+	if (!ApplyProductState(Edit.ProductGuid, Edit.DefinitionAfter, Edit.TransformAfter))
+	{
+		OnEditRejected.Broadcast(FText::FromString(TEXT("The product could not be changed.")));
+		return false;
+	}
+
+	UndoStack.Add(Edit);
+	RedoStack.Reset();
+
+	OnEditApplied.Broadcast(Edit, false);
+	OnHistoryChanged.Broadcast();
+	return true;
+}
+
 AFurnitureProduct* UProductHistorySubsystem::PlaceProduct(const FProductDefinition& Definition, const FTransform& Transform)
 {
 	const FGuid Guid = FGuid::NewGuid();
@@ -120,6 +179,10 @@ bool UProductHistorySubsystem::Undo()
 	{
 		bApplied = DestroyProduct(Edit.ProductGuid);
 	}
+	else if (Edit.Kind == EProductEditKind::Modify)
+	{
+		bApplied = ApplyProductState(Edit.ProductGuid, Edit.Definition, Edit.Transform);
+	}
 	else
 	{
 		bApplied = SpawnProduct(Edit.Definition, Edit.Transform, Edit.ProductGuid) != nullptr;
@@ -151,6 +214,10 @@ bool UProductHistorySubsystem::Redo()
 	if (Edit.Kind == EProductEditKind::Place)
 	{
 		bApplied = SpawnProduct(Edit.Definition, Edit.Transform, Edit.ProductGuid) != nullptr;
+	}
+	else if (Edit.Kind == EProductEditKind::Modify)
+	{
+		bApplied = ApplyProductState(Edit.ProductGuid, Edit.DefinitionAfter, Edit.TransformAfter);
 	}
 	else
 	{
