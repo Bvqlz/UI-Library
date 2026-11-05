@@ -1,0 +1,2 @@
+ParticipantId,TaskGroup,Task,TaskOrder,Result,Assisted,Interventions,Attempts,TimeToFirstInteraction_s,TimeOnTask_s,StartUtc,EndUtc,PositionError_cm,RotationError_deg
+P01,Controls,PressControllerButton,0,Completed,0,0,1,0.003,0.003,2026-11-05T16:15:58.071Z,2026-11-05T16:15:58.074Z,,
