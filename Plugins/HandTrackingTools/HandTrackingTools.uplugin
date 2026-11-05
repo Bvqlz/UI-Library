@@ -1,0 +1,29 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "Hand Tracking Tools",
+	"Description": "Hand tracking interaction for Meta Quest: near-field poke and far-field ray tools, interactables with proximity/contact/action zones, hand visualization, pointing and pinch helpers, and wrist-mounted hand UI. Knows nothing about any particular scene or study.",
+	"Category": "Virtual Reality",
+	"CreatedBy": "Hand Tracking UI Library team",
+	"CanContainContent": false,
+	"EnabledByDefault": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "HandTrackingTools",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "OculusXR",
+			"Enabled": true
+		},
+		{
+			"Name": "OpenXRHandTracking",
+			"Enabled": true
+		}
+	]
+}

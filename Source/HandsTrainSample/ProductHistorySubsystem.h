@@ -20,7 +20,9 @@ UENUM(BlueprintType)
 enum class EProductEditKind : uint8
 {
 	Place,
-	Remove
+	Remove,
+	/** Move, rotate or resize one product. Definition and Transform hold the state before, the After fields the state after. */
+	Modify
 };
 
 /** One completed, reversible product edit. */
@@ -41,6 +43,13 @@ struct FProductEdit
 
 	UPROPERTY(BlueprintReadOnly)
 	FTransform Transform;
+
+	/** Only used by Modify edits. */
+	UPROPERTY(BlueprintReadOnly)
+	FProductDefinition DefinitionAfter;
+
+	UPROPERTY(BlueprintReadOnly)
+	FTransform TransformAfter;
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FProductHistoryChanged);
@@ -67,6 +76,13 @@ public:
 	/** Remove a product and record it as one edit. */
 	UFUNCTION(BlueprintCallable, Category = "Product History")
 	bool RemoveProduct(AFurnitureProduct* Product);
+
+	/**
+	 * Give a product a new transform and/or definition (size) and record it as one edit. The product's
+	 * current state becomes the "before" state. Returns false if nothing changed or the product is unknown.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Product History")
+	bool ModifyProduct(AFurnitureProduct* Product, const FTransform& NewTransform, const FProductDefinition& NewDefinition);
 
 	UFUNCTION(BlueprintCallable, Category = "Product History")
 	bool Undo();
@@ -99,6 +115,7 @@ public:
 private:
 	AFurnitureProduct* SpawnProduct(const FProductDefinition& Definition, const FTransform& Transform, const FGuid& Guid);
 	bool DestroyProduct(const FGuid& Guid);
+	bool ApplyProductState(const FGuid& Guid, const FProductDefinition& Definition, const FTransform& Transform);
 
 	TArray<FProductEdit> UndoStack;
 	TArray<FProductEdit> RedoStack;

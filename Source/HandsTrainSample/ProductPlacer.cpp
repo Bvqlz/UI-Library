@@ -152,14 +152,9 @@ bool AProductPlacer::TryGetFloorHit(FVector& OutHit) const
 	return true;
 }
 
-bool AProductPlacer::ValidatePlacement(const FVector& Location, FText& OutReason) const
+bool AProductPlacer::ValidateFootprint(
+	const FVector& Location, const FVector2D& Half, const AFurnitureProduct* Ignore, FText& OutReason) const
 {
-	if (!Ghost)
-	{
-		return false;
-	}
-
-	const FVector2D Half = Ghost->GetFootprintHalfExtent();
 	if (FMath::Abs(Location.X - PlacementAreaCenter.X) + Half.X > PlacementAreaHalfExtent.X ||
 		FMath::Abs(Location.Y - PlacementAreaCenter.Y) + Half.Y > PlacementAreaHalfExtent.Y)
 	{
@@ -171,6 +166,10 @@ bool AProductPlacer::ValidatePlacement(const FVector& Location, FText& OutReason
 	{
 		for (const AFurnitureProduct* Other : History->GetProducts())
 		{
+			if (Other == Ignore)
+			{
+				continue;
+			}
 			const FVector2D OtherHalf = Other->GetFootprintHalfExtent();
 			if (FMath::Abs(Location.X - Other->GetActorLocation().X) < Half.X + OtherHalf.X &&
 				FMath::Abs(Location.Y - Other->GetActorLocation().Y) < Half.Y + OtherHalf.Y)
@@ -182,6 +181,28 @@ bool AProductPlacer::ValidatePlacement(const FVector& Location, FText& OutReason
 	}
 
 	return true;
+}
+
+bool AProductPlacer::ValidatePlacement(const FVector& Location, FText& OutReason) const
+{
+	return Ghost && ValidateFootprint(Location, Ghost->GetFootprintHalfExtent(), Ghost, OutReason);
+}
+
+FVector AProductPlacer::SnapToGrid(const FVector& Location) const
+{
+	FVector Result = Location;
+	if (GridStepCm > 0.0f)
+	{
+		Result.X = FMath::GridSnap(Result.X, GridStepCm);
+		Result.Y = FMath::GridSnap(Result.Y, GridStepCm);
+	}
+	Result.Z = PlacementAreaCenter.Z;
+	return Result;
+}
+
+void AProductPlacer::SetToolOwnsPinch(bool bInToolOwnsPinch)
+{
+	bToolOwnsPinch = bInToolOwnsPinch;
 }
 
 void AProductPlacer::UpdatePlacing()
@@ -201,13 +222,7 @@ void AProductPlacer::UpdatePlacing()
 		return;
 	}
 
-	FVector Location = Hit;
-	if (GridStepCm > 0.0f)
-	{
-		Location.X = FMath::GridSnap(Location.X, GridStepCm);
-		Location.Y = FMath::GridSnap(Location.Y, GridStepCm);
-	}
-	Location.Z = PlacementAreaCenter.Z;
+	const FVector Location = SnapToGrid(Hit);
 
 	Ghost->SetActorHiddenInGame(false);
 	Ghost->SetActorLocation(Location);
@@ -277,6 +292,16 @@ void AProductPlacer::UpdateIdle()
 	if (bUiOwnsInput)
 	{
 		SetHovered(nullptr);
+		return;
+	}
+	if (bToolOwnsPinch)
+	{
+		// A wrist tool is using the gesture; a release must not select or clear anything
+		SetHovered(nullptr);
+		if (bPinchReleased)
+		{
+			bPinchStartedInMode = false;
+		}
 		return;
 	}
 

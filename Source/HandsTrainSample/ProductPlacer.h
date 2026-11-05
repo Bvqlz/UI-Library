@@ -96,6 +96,42 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Placement")
 	void SetUiOwnsInput(bool bInUiOwnsInput);
 
+	/**
+	 * A wrist tool (Move, Rotate, Navigation, Scale) sets this while it needs the pinch gesture, so the
+	 * release that ends a drag never also selects or deselects a room object.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Placement")
+	void SetToolOwnsPinch(bool bInToolOwnsPinch);
+
+	UFUNCTION(BlueprintPure, Category = "Placement")
+	bool IsUiOwningInput() const { return bUiOwnsInput; }
+
+	/** Pinch state of the ray hand, as of this frame's tick. */
+	UFUNCTION(BlueprintPure, Category = "Gesture")
+	bool IsPinching() const { return bPinching; }
+
+	UFUNCTION(BlueprintPure, Category = "Gesture")
+	bool WasPinchPressed() const { return bPinchPressed; }
+
+	UFUNCTION(BlueprintPure, Category = "Gesture")
+	bool WasPinchReleased() const { return bPinchReleased; }
+
+	/** Editor fallback keys, as of this frame's tick: Space confirms (stands in for a pinch), Escape cancels. */
+	bool WasConfirmKeyPressed() const { return bKeyConfirm; }
+	bool WasCancelKeyPressed() const { return bKeyCancel; }
+
+	/** Where the ray meets the floor plane of the placement area. False if it points up or too far. */
+	bool TryGetFloorHit(FVector& OutHit) const;
+
+	/** Snap a floor position to the placement grid. Z is set to the floor height. */
+	FVector SnapToGrid(const FVector& Location) const;
+
+	/**
+	 * Is a footprint centered at Location inside the placement area and clear of other products?
+	 * Ignore is skipped in the overlap test (the product being moved).
+	 */
+	bool ValidateFootprint(const FVector& Location, const FVector2D& HalfExtent, const AFurnitureProduct* Ignore, FText& OutReason) const;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -112,7 +148,6 @@ private:
 	void UpdatePinch();
 	void UpdatePlacing();
 	void UpdateIdle();
-	bool TryGetFloorHit(FVector& OutHit) const;
 	bool ValidatePlacement(const FVector& Location, FText& OutReason) const;
 	void ConfirmPlacement();
 	void SetHint(const FText& Text, const FLinearColor& Color, const FVector& WorldLocation);
@@ -129,6 +164,7 @@ private:
 	bool bPlacing = false;
 	bool bGhostValid = false;
 	bool bUiOwnsInput = false;
+	bool bToolOwnsPinch = false;
 
 	bool bPinching = false;
 	bool bPinchPressed = false;

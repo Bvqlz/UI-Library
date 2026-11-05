@@ -17,6 +17,12 @@ public class HandsTrainSample : ModuleRules
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore",
         "OculusXRInput"});
 
+        // The sample is a host environment. It uses two project plugins and neither knows about the other:
+        //   HandTrackingTools: hand tracking tools, interactables, hand visuals, wrist UI
+        //   TaskValidator:     study task timing, attempts, success and CSV logging
+        // Only code in this module (the validator bridge and the sample's own tasks) connects them.
+        PublicDependencyModuleNames.AddRange(new string[] { "HandTrackingTools", "TaskValidator" });
+
         PrivateDependencyModuleNames.AddRange(new string[] {
             "HeadMountedDisplay", "OculusXRHMD", "XRBase" });
 

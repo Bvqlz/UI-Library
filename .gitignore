@@ -13,8 +13,13 @@
 *.suo
 *.user
 
-# Meta SDK plugins: installed per machine, see README.md
-/Plugins/
+# Plugins: the Meta SDK plugins are installed per machine (see README.md) and stay ignored.
+# The project's own plugins are source and are committed.
+/Plugins/*
+!/Plugins/HandTrackingTools/
+!/Plugins/TaskValidator/
+/Plugins/*/Binaries/
+/Plugins/*/Intermediate/
 /MetaXRInteraction/
 
 # Tool binary the Meta XR plugin downloads on demand

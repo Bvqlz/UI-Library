@@ -3,7 +3,18 @@
 
 ## Setup
 
-For the reasoning and version policy behind these steps, see the [Software Setup Strategy](docs/SOFTWARE_SETUP_STRATEGY.md).
+For the reasoning and version policy behind these steps, see the [Software Setup Strategy](docs/SOFTWARE_SETUP_STRATEGY.md). For how the project is split into the sample, the hand tracker and the validator, see [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md).
+
+### Project layout
+
+| Part | Location | What it is |
+| --- | --- | --- |
+| Sample environment | `Source/HandsTrainSample`, `Content/` | The scene, the furniture content and the test tasks. Implement your initial test task as an existing task within the sample. |
+| Hand Tracking Tools | `Plugins/HandTrackingTools` | The hand tracker. Reusable, no scene or study code. |
+| Task Validator | `Plugins/TaskValidator` | The validator: timing, attempts, success and a CSV per session. Reusable, no hand tracking code. |
+| Meta XR plugin | `Plugins/MetaXR` | Installed by each developer (step 4). Not in the repository. |
+
+The two plugins are committed with the project. Only the sample depends on both, and a bridge in the sample connects them.
 
 ### Requirements
 
@@ -65,7 +76,23 @@ The Meta Interaction SDK is optional. No project code or content currently refer
 
 The editor opens on `HandsInteractionTrainMap`. If the Meta XR Project Setup Tool flags anything, review it under **Edit > Project Settings > Plugins > Meta XR**. It may report the NDK version noted in step 3.
 
-### 6. Run on a Quest
+The first build compiles all three modules: the `HandTrackingTools` and `TaskValidator` plugins, which are in the repository, and the `HandsTrainSample` game module. In **Edit > Plugins**, check that `HandTrackingTools` and `TaskValidator` are enabled. **Window > Place Actors** should have a **Task Validator** tab.
+
+### 6. Try a test task (optional, no headset needed)
+
+The project is a sample environment: you implement your initial test task as an existing task within the sample, and the validator times it. The hand tracker and the validator are separate plugins, and a bridge in the sample connects them. Details are in [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md).
+
+1. Open `HandsInteractionTrainMap` and save a copy as `ValidatorTestMap`.
+2. From **Window > Place Actors > Task Validator**, add a **Task Validator Director** and set **Participant Id** to `P01`.
+3. Add a task, either:
+   - an **Event Task** (Task Group `Selection`, Task Name `SelectWindmill`) with the windmill in **Complete On Interaction With**, or
+   - a **Product Placement Task** (Required Type `Chair`), in a level with the wrist toolkit, menu, placer and edit tools.
+4. Press Play, click in the viewport, and press `N` to start the task. Do the task, then stop Play.
+5. Read the result in `Saved/ValidatorLogs/P01_validator.csv`. It has one row per task: result, attempts, time on task and time to first interaction.
+
+The administrator keys (`N` next, `H` intervention, `X` abandon) need a keyboard on the PC, so study sessions run through Quest Link from the editor, not from a standalone APK. See [the validator guide](docs/validator/GUIDE.md) for the headset demo and for reading the CSV, and [the validator design](docs/validator/DESIGN.md) for how it works.
+
+### 7. Run on a Quest
 
 1. Enable developer mode for your headset, connect it over USB, and accept the debugging prompt inside the headset.
 2. In the editor, select **Platforms > Android > Package Project** and choose an output folder.
@@ -95,13 +122,18 @@ Open the generated `HandsTrainSample.sln`, then follow steps 3 and 4 of [Build a
 | The editor asks to rebuild modules | Expected on a fresh clone. Accept, or build from Visual Studio (step 5). |
 | Android packaging can't find the SDK or NDK | Check the environment variables (step 3), then restart the editor. |
 | Low FPS on Quest 2 | See [Known Issues](#known-issues). |
+| Blueprints or the map report missing classes | The hand tracking classes moved to the `HandTrackingTools` plugin. Check the `[CoreRedirects]` section of `Config/DefaultEngine.ini`, then follow the clean-up in [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md#8-what-moved-and-what-that-does-to-existing-content). |
+| The `Task Validator` tab is missing in Place Actors | Close the editor and rebuild (step 5). |
+| The validator records no attempts | The thing touched isn't one the sample's bridge listens to. See [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md#4-how-they-work-together-at-runtime). |
 
 # Licenses
-The [Meta License](./LICENSE) applies to the SDK and supporting material. The MIT License applies to only certain, clearly marked documents. If an individual file does not indicate which license it is subject to, then the Meta License applies.
+The [Meta License](./LICENSE) applies to the SDK and supporting material. The MIT License applies to only certain, clearly marked documents. If an individual file does not indicate which license it is subject to, then the Meta License applies. The files in `Plugins/TaskValidator` carry no license header yet, so by that rule the Meta License applies to them until the team decides otherwise.
 
 # Changelog
 ## November 2026
 - Add wrist menu, button panel, and furniture product placement code
+- Split the project: the hand tracking code is now the `HandTrackingTools` plugin, the validator is the `TaskValidator` plugin, and the sample connects them with a validator bridge and a sample test task. See [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md)
+- Add the wrist toolkit tools: Move, Rotate, Scale / Dimensions and Navigation (`AProductEditTools`), with undo and redo for product edits
 - Update setup instructions for Unreal Engine 5.8 and Meta XR plugin v207
 
 ## April 2025

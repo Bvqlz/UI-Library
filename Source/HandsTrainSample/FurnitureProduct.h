@@ -41,6 +41,17 @@ struct FProductCapabilities
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bRemovable = true;
+
+	/** The Scale / Dimensions tool may change the width (Y). Height and depth stay fixed. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bResizable = true;
+
+	/** Allowed width range for the Scale / Dimensions tool (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bResizable"))
+	float MinWidthCm = 40.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bResizable"))
+	float MaxWidthCm = 300.0f;
 };
 
 /** One catalog entry. */
