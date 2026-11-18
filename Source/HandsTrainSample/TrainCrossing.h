@@ -10,12 +10,15 @@ LICENSE file in the root directory of this source tree.
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Interactable.h"
 #include "TrainCrossing.generated.h"
 
-class ACollidableInteractable;
-class AInteractableTool;
+class USelectRelayComponent;
 
+/**
+ * Far-field prop: select it (ray + pinch, or any Interaction SDK interaction) to blink the lights and ring.
+ * The interaction comes from the Interaction SDK interactable(s) added to the Blueprint, typically an
+ * IsdkRayInteractable placed at CollidableInteractAnchor; SelectRelay turns their pointer events into OnSelected.
+ */
 UCLASS()
 class HANDSTRAINSAMPLE_API ATrainCrossing : public AActor
 {
@@ -30,7 +33,7 @@ public:
 	void ActivateTrainCrossing();
 
 	UFUNCTION()
-	void InteractableStateChanged(const FInteractableStateArgs& StateArgs);
+	void HandleSelected(FName Method);
 
 protected:
 	// This is a blueprint event because it's easy to do delays in blueprints.
@@ -69,14 +72,9 @@ protected:
 	UPROPERTY(BlueprintReadWrite)
 	bool BlinkFirstLight;
 
-	UPROPERTY(BlueprintReadOnly)
-	ACollidableInteractable* CollidableLogic;
-
-	UPROPERTY(EditDefaultsOnly)
-	TSubclassOf<ACollidableInteractable> CollidableInteractableBP;
-
-	UPROPERTY(BlueprintReadOnly)
-	AInteractableTool* ToolInteractingWithMe;
+	/** Listens to the Interaction SDK interactables on this actor. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	USelectRelayComponent* SelectRelay;
 
 	virtual void BeginPlay() override;
 };

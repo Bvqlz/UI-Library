@@ -7,14 +7,14 @@ LICENSE file in the root directory of this source tree.
 */
 
 #include "TrainCrossing.h"
-#include "CollidableInteractable.h"
-#include "InteractableTool.h"
 #include "SelectionCylinderHelper.h"
+#include "SelectRelayComponent.h"
 #include "Components/AudioComponent.h"
 
 ATrainCrossing::ATrainCrossing()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	SelectRelay = CreateDefaultSubobject<USelectRelayComponent>(FName(TEXT("SelectRelay")));
 }
 
 void ATrainCrossing::BeginPlay()
@@ -31,44 +31,23 @@ void ATrainCrossing::BeginPlay()
 	SelectionCylinderHelperComp = (USelectionCylinderHelper*)GetDefaultSubobjectByName(
 		FName(TEXT("SelectionCylinderHelper")));
 
-	CollidableLogic = GetWorld()->SpawnActor<ACollidableInteractable>(
-		CollidableInteractableBP,
-		CollidableAnchor->GetComponentLocation(),
-		CollidableAnchor->GetComponentRotation());
-	CollidableLogic->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-
-	CollidableLogic->OnInteractableStateChanged.AddDynamic(this,
-		&ATrainCrossing::InteractableStateChanged);
-
+	SelectRelay->OnSelected.AddUniqueDynamic(this, &ATrainCrossing::HandleSelected);
 	SelectionCylinderHelperComp->Initialize(SelectionMeshComp);
 }
 
 void ATrainCrossing::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	if (ToolInteractingWithMe == nullptr)
-	{
-		SelectionCylinderHelperComp->SetSelectionState(ESelectionState::Off);
-	}
-	else
-	{
-		SelectionCylinderHelperComp->SetSelectionState(
-			(ToolInteractingWithMe->GetCurrInputState() == EToolInputState::PrimaryInputDown || ToolInteractingWithMe->GetCurrInputState() == EToolInputState::PrimaryInputDownStay)
-				? ESelectionState::Highlighted
-				: ESelectionState::Selected);
-	}
+	// Same look as before: pointed at shows the cylinder, pinching brightens it
+	SelectionCylinderHelperComp->SetSelectionState(
+		SelectRelay->IsSelected() ? ESelectionState::Highlighted
+		: SelectRelay->IsHovered() ? ESelectionState::Selected
+		: ESelectionState::Off);
 }
 
-void ATrainCrossing::InteractableStateChanged(const FInteractableStateArgs& StateArgs)
+void ATrainCrossing::HandleSelected(FName /*Method*/)
 {
-	bool bInActionState = StateArgs.NewInteractableState == EInteractableState::ActionState;
-	if (bInActionState)
-	{
-		ActivateTrainCrossing();
-	}
-
-	ToolInteractingWithMe = StateArgs.NewInteractableState > EInteractableState::Default ? StateArgs.Tool : nullptr;
+	ActivateTrainCrossing();
 }
 
 void ATrainCrossing::ActivateTrainCrossing()

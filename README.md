@@ -96,7 +96,7 @@ The project is a sample environment: you implement your initial test task as an 
 1. Open `HandsInteractionTrainMap` and save a copy as `ValidatorTestMap`.
 2. From **Window > Place Actors > Task Validator**, add a **Task Validator Director** and set **Participant Id** to `P01`.
 3. Add a task, either:
-   - an **Event Task** (Task Group `Selection`, Task Name `SelectWindmill`) with the windmill in **Complete On Interaction With**. Until the scene is moved to the Interaction SDK, the windmill first needs an **IsdkRayInteractable** component (see [the story](docs/stories/ISDK_REFACTOR.md)), or
+   - an **Event Task** (Task Group `Selection`, Task Name `SelectWindmill`) with the windmill in **Complete On Interaction With**. Until phase 2 of [the story](docs/stories/ISDK_REFACTOR.md) is finished, the windmill's Blueprint first needs an **IsdkRayInteractable** component. Or use the **Controller Box**, whose buttons are already Interaction SDK poke buttons, or
    - a **Product Placement Task** (Required Type `Chair`), in a level with the wrist toolkit, menu, placer and edit tools.
 4. Press Play, click in the viewport, and press `N` to start the task. Do the task, then stop Play.
 5. Read the result in `Saved/ValidatorLogs/P01_validator.csv`. It has one row per task: result, attempts, time on task, time to first interaction and the interaction methods used.
@@ -130,7 +130,7 @@ Open the generated `HandsTrainSample.sln`, then follow steps 3 and 4 of [Build a
 | Problem | Fix |
 | --- | --- |
 | `Plugin 'OculusXR' failed to load` or missing `OculusXR*` modules | Check that `Plugins/MetaXR/OculusXR.uplugin` exists (step 4). |
-| `Plugin 'OculusInteraction' failed to load`, or `StructTypes.h` / `IsdkIPointable.h` not found | Check that `Plugins/MetaXRInteraction/OculusInteraction.uplugin` exists (step 4b). If it does and a header is still not found, see the include note at the top of `Source/HandsTrainSample/ValidatorBridgeSubsystem.h`. |
+| `Plugin 'OculusInteraction' failed to load`, or `StructTypes.h` / `IsdkIPointable.h` not found | Check that `Plugins/MetaXRInteraction/OculusInteraction.uplugin` exists (step 4b). If it does and a header is still not found, see the include note at the top of `Source/HandsTrainSample/IsdkPointables.h`. |
 | The editor asks to rebuild modules | Expected on a fresh clone. Accept, or build from Visual Studio (step 5). |
 | Android packaging can't find the SDK or NDK | Check the environment variables (step 3), then restart the editor. |
 | Low FPS on Quest 2 | See [Known Issues](#known-issues). |
@@ -143,6 +143,7 @@ The [Meta License](./LICENSE) applies to the SDK and supporting material. The MI
 
 # Changelog
 ## November 2026
+- Start moving the sample scene to the Interaction SDK (phase 2 of [the story](docs/stories/ISDK_REFACTOR.md)): the controller box uses Meta's rounded poke buttons, and the windmill and crossing react to any Interaction SDK selection through a new `SelectRelay` component. Editor steps remain (pawn rigs, ray interactables on the windmill and crossing)
 - Move the validator and its bridge to the Meta XR Interaction SDK (phase 1 of [the story](docs/stories/ISDK_REFACTOR.md)): the bridge counts any Interaction SDK poke, ray or grab `Select` as an attempt and no longer listens to our custom gestures; the validator records the interaction method (new `InteractionMethods` CSV column), counts one action once, and is usable from Blueprint. The Interaction SDK plugin is now required
 - Remove the `TaskValidatorDemo` placeholder module (custom pinch grab and cube)
 - Add wrist menu, button panel, and furniture product placement code

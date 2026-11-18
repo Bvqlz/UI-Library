@@ -97,42 +97,14 @@ AActor* UValidatorBridgeSubsystem::ResolveReportedActor(AActor* Actor)
 	return nullptr;
 }
 
-FName UValidatorBridgeSubsystem::MethodFromInteractable(const UObject* Interactable)
-{
-	if (!Interactable)
-	{
-		return NAME_None;
-	}
-
-	// Use the native class, so a Blueprint subclass of IsdkRayInteractable still reads as Ray
-	const UClass* Class = Interactable->GetClass();
-	while (Class && !Class->HasAnyClassFlags(CLASS_Native))
-	{
-		Class = Class->GetSuperClass();
-	}
-
-	// IsdkPokeInteractable -> Poke, IsdkRayInteractable -> Ray, IsdkGrabbableComponent -> Grab
-	FString Name = Class ? Class->GetName() : FString();
-	Name.RemoveFromStart(TEXT("Isdk"));
-	Name.RemoveFromEnd(TEXT("Component"));
-	Name.RemoveFromEnd(TEXT("Interactable"));
-	Name.RemoveFromEnd(TEXT("bable")); // Grabbable -> Grab
-	return Name.IsEmpty() ? NAME_None : FName(*Name);
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // Source 1: Interaction SDK
 
 void UValidatorBridgeSubsystem::BindIsdkPointables(AActor* Actor)
 {
-	TInlineComponentArray<UActorComponent*> Components(Actor);
-	for (UActorComponent* Component : Components)
+	for (UActorComponent* Component : IsdkPointables::Find(Actor))
 	{
-		if (!Component || !Component->Implements<UIsdkIPointable>())
-		{
-			continue;
-		}
-		if (IIsdkIPointable* Pointable = Cast<IIsdkIPointable>(Component))
+		if (IIsdkIPointable* Pointable = IsdkPointables::AsPointable(Component))
 		{
 			Pointable->GetInteractionPointerEventDelegate().AddUniqueDynamic(
 				this, &UValidatorBridgeSubsystem::HandleIsdkPointerEvent);
@@ -149,9 +121,8 @@ void UValidatorBridgeSubsystem::HandleIsdkPointerEvent(const FIsdkInteractionPoi
 		return;
 	}
 
-	UObject* Interactable = PointerEvent.Interactable.GetObject();
-	const UActorComponent* Component = Cast<UActorComponent>(Interactable);
-	Report(this, Component ? Component->GetOwner() : nullptr, MethodFromInteractable(Interactable));
+	const UActorComponent* Component = IsdkPointables::SourceOf(PointerEvent);
+	Report(this, Component ? Component->GetOwner() : nullptr, IsdkPointables::MethodOf(Component));
 }
 
 // ---------------------------------------------------------------------------------------------------------------

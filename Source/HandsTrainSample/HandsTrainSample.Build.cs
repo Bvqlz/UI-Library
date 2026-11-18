@@ -24,8 +24,9 @@ public class HandsTrainSample : ModuleRules
         PublicDependencyModuleNames.AddRange(new string[] { "HandTrackingTools", "TaskValidator" });
 
         // Meta XR Interaction SDK (installed per machine at Plugins/MetaXRInteraction, see README.md).
-        // The validator bridge counts its poke, ray and grab Select events as attempts.
-        PublicDependencyModuleNames.Add("OculusInteraction");
+        // OculusInteraction: interactables and pointer events. The validator bridge counts their Select events.
+        // OculusInteractionPrebuilts: ready-made pieces, such as the rounded poke buttons on the controller box.
+        PublicDependencyModuleNames.AddRange(new string[] { "OculusInteraction", "OculusInteractionPrebuilts" });
 
         PrivateDependencyModuleNames.AddRange(new string[] {
             "HeadMountedDisplay", "OculusXRHMD", "XRBase" });

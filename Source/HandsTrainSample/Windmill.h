@@ -11,12 +11,16 @@ LICENSE file in the root directory of this source tree.
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "LatentActions.h"
-#include "Interactable.h"
 #include "Windmill.generated.h"
 
-class ACollidableInteractable;
-class AInteractableTool;
+class USelectRelayComponent;
 
+/**
+ * Far-field prop: select it (ray + pinch, or any Interaction SDK interaction) to start or stop the blades.
+ * The interaction itself comes from the Interaction SDK interactable(s) added to the Blueprint, typically an
+ * IsdkRayInteractable placed at CollidableInteractAnchor. SelectRelay turns their pointer events into
+ * OnSelected and hover, so this class doesn't depend on which interaction is used.
+ */
 UCLASS()
 class HANDSTRAINSAMPLE_API AWindmill : public AActor
 {
@@ -31,7 +35,7 @@ public:
 	void NewMoveState(bool IsMovingNow);
 
 	UFUNCTION()
-	void InteractableStateChanged(const FInteractableStateArgs& StateArgs);
+	void HandleSelected(FName Method);
 
 protected:
 	virtual void BeginPlay() override;
@@ -61,20 +65,16 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	class UStaticMeshComponent* BladesMesh;
 
+	/** Listens to the Interaction SDK interactables on this actor. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	USelectRelayComponent* SelectRelay;
+
+	/** Where the interactable surface sits (place the IsdkRayInteractable here in the Blueprint). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	USceneComponent* CollidableInteractAnchor;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxBladesSpeed;
-
-	UPROPERTY(BlueprintReadOnly)
-	ACollidableInteractable* CollidableLogic;
-
-	UPROPERTY(EditDefaultsOnly)
-	TSubclassOf<ACollidableInteractable> CollidableInteractableBP;
-
-	UPROPERTY(BlueprintReadOnly)
-	AInteractableTool* ToolInteractingWithMe;
 
 private:
 	float RotationAngle;
