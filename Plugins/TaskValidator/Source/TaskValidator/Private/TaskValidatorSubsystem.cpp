@@ -13,7 +13,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogTaskValidator, Log, All);
 namespace
 {
 	const TCHAR* CsvHeader = TEXT("ParticipantId,TaskGroup,Task,TaskOrder,Result,Assisted,Interventions,Attempts,")
-		TEXT("TimeToFirstInteraction_s,TimeOnTask_s,StartUtc,EndUtc,PositionError_cm,RotationError_deg");
+		TEXT("TimeToFirstInteraction_s,TimeOnTask_s,StartUtc,EndUtc,PositionError_cm,RotationError_deg,InteractionMethods");
 
 	FString CsvField(const FString& Value)
 	{
@@ -38,11 +38,11 @@ UTaskValidatorSubsystem* UTaskValidatorSubsystem::Get(const UObject* WorldContex
 	return GameInstance ? GameInstance->GetSubsystem<UTaskValidatorSubsystem>() : nullptr;
 }
 
-void UTaskValidatorSubsystem::ReportInteraction(const UObject* WorldContext, AActor* InteractedActor)
+void UTaskValidatorSubsystem::ReportInteraction(const UObject* WorldContext, AActor* InteractedActor, FName Method)
 {
 	if (UTaskValidatorSubsystem* Subsystem = Get(WorldContext))
 	{
-		Subsystem->NotifyInteraction(InteractedActor);
+		Subsystem->NotifyInteraction(InteractedActor, Method);
 	}
 }
 
@@ -163,6 +163,8 @@ void UTaskValidatorSubsystem::StartTask(AValidatorTask* Task)
 	ActiveRecord.StartUtc = FDateTime::UtcNow();
 	ActiveStartSeconds = FPlatformTime::Seconds();
 	ActiveTask = Task;
+	ActorsReportedThisFrame.Reset();
+	LastReportFrame = MAX_uint64;
 
 	Task->BeginTask();
 	UE_LOG(LogTaskValidator, Log, TEXT("Started task %s / %s"), *Task->TaskGroup, *Task->TaskName);
@@ -188,10 +190,20 @@ void UTaskValidatorSubsystem::LogIntervention()
 	}
 }
 
-void UTaskValidatorSubsystem::NotifyInteraction(AActor* InteractedActor)
+void UTaskValidatorSubsystem::NotifyInteraction(AActor* InteractedActor, FName Method)
 {
 	AValidatorTask* Task = ActiveTask.Get();
 	if (!Task)
+	{
+		return;
+	}
+
+	// A second source reporting the same action can still name the method the first one didn't know
+	if (!Method.IsNone())
+	{
+		ActiveRecord.InteractionMethods.AddUnique(Method);
+	}
+	if (IsDuplicateReport(InteractedActor))
 	{
 		return;
 	}
@@ -201,7 +213,33 @@ void UTaskValidatorSubsystem::NotifyInteraction(AActor* InteractedActor)
 	{
 		ActiveRecord.TimeToFirstInteraction = GetActiveTaskElapsed();
 	}
-	Task->OnInteraction(InteractedActor);
+	UE_LOG(LogTaskValidator, Verbose, TEXT("Attempt %d: %s via %s"), ActiveRecord.Attempts,
+		*GetNameSafe(InteractedActor), Method.IsNone() ? TEXT("(unspecified)") : *Method.ToString());
+
+	OnInteractionCounted.Broadcast(InteractedActor, Method);
+	// Attempts are counted before the task is asked, so the attempt that completes a task is always included
+	Task->HandleInteraction(InteractedActor, Method);
+}
+
+bool UTaskValidatorSubsystem::IsDuplicateReport(const AActor* InteractedActor)
+{
+	// Several sources can see one physical action: a ray Select on a product and the placer's "product
+	// selected" event arrive in the same frame for the same actor. Count it once.
+	if (LastReportFrame != GFrameCounter)
+	{
+		LastReportFrame = GFrameCounter;
+		ActorsReportedThisFrame.Reset();
+	}
+	if (!InteractedActor)
+	{
+		return false;
+	}
+	if (ActorsReportedThisFrame.Contains(InteractedActor))
+	{
+		return true;
+	}
+	ActorsReportedThisFrame.Add(InteractedActor);
+	return false;
 }
 
 double UTaskValidatorSubsystem::GetActiveTaskElapsed() const
@@ -254,6 +292,7 @@ void UTaskValidatorSubsystem::WriteRow(const FValidatorTaskRecord& R)
 		R.EndUtc.ToIso8601(),
 		OptionalNumber(R.PositionErrorCm, 2),
 		OptionalNumber(R.RotationErrorDeg, 2),
+		CsvField(FString::JoinBy(R.InteractionMethods, TEXT(";"), [](const FName& Method) { return Method.ToString(); })),
 	}, TEXT(","));
 
 	// Append one row per task so a crash mid-session loses at most the running task.

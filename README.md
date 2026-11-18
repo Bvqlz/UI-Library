@@ -13,8 +13,9 @@ For the reasoning and version policy behind these steps, see the [Software Setup
 | Hand Tracking Tools | `Plugins/HandTrackingTools` | The hand tracker. Reusable, no scene or study code. |
 | Task Validator | `Plugins/TaskValidator` | The validator: timing, attempts, success and a CSV per session. Reusable, no hand tracking code. |
 | Meta XR plugin | `Plugins/MetaXR` | Installed by each developer (step 4). Not in the repository. |
+| Meta XR Interaction SDK | `Plugins/MetaXRInteraction` | Installed by each developer (step 4b). Not in the repository. The validator counts its interactions. |
 
-The two plugins are committed with the project. Only the sample depends on both, and a bridge in the sample connects them.
+The two plugins are committed with the project. Only the sample depends on both, and a bridge in the sample connects them: it counts Meta Interaction SDK interactions as validator attempts.
 
 ### Requirements
 
@@ -25,6 +26,7 @@ The two plugins are committed with the project. Only the sample depends on both,
 | Visual Studio | 2022 17.14, or 2026 with MSVC 14.50.35723 or later (the engine's Windows SDK config flags earlier 14.50 builds for compiler errors), with the **Game development with C++** workload |
 | Unreal Engine | 5.8 (developed on 5.8.4) |
 | Meta XR plugin | v207 (`1.207.0`) |
+| Meta XR Interaction SDK | The release that matches the Meta XR plugin |
 | Android | NDK 27.2.12479018, SDK platforms `android-36` and `android-34`, build-tools 36.0.0, CMake 3.22.1 |
 | JDK | The JDK bundled with Android Studio (its `jbr` folder) |
 | Headset | Quest 2, Quest Pro, Quest 3, or Quest 3S in developer mode |
@@ -65,7 +67,16 @@ The plugin is not included in this repository, and the project won't compile wit
    Plugins/MetaXR/OculusXR.uplugin
    ```
 
-The Meta Interaction SDK is optional. No project code or content currently references it. If you want it, install it at `Plugins/MetaXRInteraction/OculusInteraction.uplugin`.
+### 4b. Install the Meta XR Interaction SDK plugin
+
+The Interaction SDK is also required and not in the repository. The validator counts its poke, ray and grab interactions (see [the Interaction SDK story](docs/stories/ISDK_REFACTOR.md)).
+
+1. From the same download page, get the **Meta XR Interaction SDK** plugin for the same release as your Meta XR plugin.
+2. Extract it into the project so that this file exists:
+
+   ```text
+   Plugins/MetaXRInteraction/OculusInteraction.uplugin
+   ```
 
 ### 5. Build and open the project
 
@@ -85,10 +96,10 @@ The project is a sample environment: you implement your initial test task as an 
 1. Open `HandsInteractionTrainMap` and save a copy as `ValidatorTestMap`.
 2. From **Window > Place Actors > Task Validator**, add a **Task Validator Director** and set **Participant Id** to `P01`.
 3. Add a task, either:
-   - an **Event Task** (Task Group `Selection`, Task Name `SelectWindmill`) with the windmill in **Complete On Interaction With**, or
+   - an **Event Task** (Task Group `Selection`, Task Name `SelectWindmill`) with the windmill in **Complete On Interaction With**. Until the scene is moved to the Interaction SDK, the windmill first needs an **IsdkRayInteractable** component (see [the story](docs/stories/ISDK_REFACTOR.md)), or
    - a **Product Placement Task** (Required Type `Chair`), in a level with the wrist toolkit, menu, placer and edit tools.
 4. Press Play, click in the viewport, and press `N` to start the task. Do the task, then stop Play.
-5. Read the result in `Saved/ValidatorLogs/P01_validator.csv`. It has one row per task: result, attempts, time on task and time to first interaction.
+5. Read the result in `Saved/ValidatorLogs/P01_validator.csv`. It has one row per task: result, attempts, time on task, time to first interaction and the interaction methods used.
 
 The administrator keys (`N` next, `H` intervention, `X` abandon) need a keyboard on the PC, so study sessions run through Quest Link from the editor, not from a standalone APK. See [the validator guide](docs/validator/GUIDE.md) for the headset demo and for reading the CSV, and [the validator design](docs/validator/DESIGN.md) for how it works.
 
@@ -119,18 +130,21 @@ Open the generated `HandsTrainSample.sln`, then follow steps 3 and 4 of [Build a
 | Problem | Fix |
 | --- | --- |
 | `Plugin 'OculusXR' failed to load` or missing `OculusXR*` modules | Check that `Plugins/MetaXR/OculusXR.uplugin` exists (step 4). |
+| `Plugin 'OculusInteraction' failed to load`, or `StructTypes.h` / `IsdkIPointable.h` not found | Check that `Plugins/MetaXRInteraction/OculusInteraction.uplugin` exists (step 4b). If it does and a header is still not found, see the include note at the top of `Source/HandsTrainSample/ValidatorBridgeSubsystem.h`. |
 | The editor asks to rebuild modules | Expected on a fresh clone. Accept, or build from Visual Studio (step 5). |
 | Android packaging can't find the SDK or NDK | Check the environment variables (step 3), then restart the editor. |
 | Low FPS on Quest 2 | See [Known Issues](#known-issues). |
 | Blueprints or the map report missing classes | The hand tracking classes moved to the `HandTrackingTools` plugin. Check the `[CoreRedirects]` section of `Config/DefaultEngine.ini`, then follow the clean-up in [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md#8-what-moved-and-what-that-does-to-existing-content). |
 | The `Task Validator` tab is missing in Place Actors | Close the editor and rebuild (step 5). |
-| The validator records no attempts | The thing touched isn't one the sample's bridge listens to. See [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md#4-how-they-work-together-at-runtime). |
+| The validator records no attempts | The thing touched has no Meta Interaction SDK interactable, or still uses the old custom interactables. See [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md#4-how-they-work-together-at-runtime). |
 
 # Licenses
 The [Meta License](./LICENSE) applies to the SDK and supporting material. The MIT License applies to only certain, clearly marked documents. If an individual file does not indicate which license it is subject to, then the Meta License applies. The files in `Plugins/TaskValidator` carry no license header yet, so by that rule the Meta License applies to them until the team decides otherwise.
 
 # Changelog
 ## November 2026
+- Move the validator and its bridge to the Meta XR Interaction SDK (phase 1 of [the story](docs/stories/ISDK_REFACTOR.md)): the bridge counts any Interaction SDK poke, ray or grab `Select` as an attempt and no longer listens to our custom gestures; the validator records the interaction method (new `InteractionMethods` CSV column), counts one action once, and is usable from Blueprint. The Interaction SDK plugin is now required
+- Remove the `TaskValidatorDemo` placeholder module (custom pinch grab and cube)
 - Add wrist menu, button panel, and furniture product placement code
 - Split the project: the hand tracking code is now the `HandTrackingTools` plugin, the validator is the `TaskValidator` plugin, and the sample connects them with a validator bridge and a sample test task. See [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md)
 - Add the wrist toolkit tools: Move, Rotate, Scale / Dimensions and Navigation (`AProductEditTools`), with undo and redo for product edits

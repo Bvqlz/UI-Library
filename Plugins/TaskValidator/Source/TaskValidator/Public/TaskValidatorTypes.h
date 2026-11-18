@@ -35,5 +35,11 @@ struct FValidatorTaskRecord
 	float PositionErrorCm = -1.f;
 	float RotationErrorDeg = -1.f;
 
+	/**
+	 * The distinct interaction methods reported during the task, in the order first seen (e.g. Ray, then Poke).
+	 * Reports without a method add nothing here. Written to the CSV as "Ray;Poke".
+	 */
+	TArray<FName> InteractionMethods;
+
 	bool WasAssisted() const { return Interventions > 0; }
 };

@@ -1,6 +1,4 @@
 #include "AssetRegistry/AssetData.h"
-#include "DemoGrabbableCube.h"
-#include "DemoPinchGrabber.h"
 #include "Editor.h"
 #include "EventTask.h"
 #include "IPlacementModeModule.h"
@@ -63,8 +61,6 @@ private:
 		Add(ATaskValidatorDirector::StaticClass(), LOCTEXT("Director", "Task Validator Director"));
 		Add(ATargetZoneTask::StaticClass(), LOCTEXT("TargetZone", "Target Zone Task"));
 		Add(AEventTask::StaticClass(), LOCTEXT("Event", "Event Task"));
-		Add(ADemoPinchGrabber::StaticClass(), LOCTEXT("Grabber", "Demo Pinch Grabber"));
-		Add(ADemoGrabbableCube::StaticClass(), LOCTEXT("Cube", "Demo Grabbable Cube"));
 	}
 
 	static inline const FName CategoryName = TEXT("TaskValidator");

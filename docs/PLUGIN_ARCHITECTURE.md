@@ -36,8 +36,9 @@ So the question "where does my task go?" has one answer: **in the sample, as a t
 
 ```mermaid
 flowchart LR
+    ISDK["Meta Interaction SDK<br/>poke, ray, grab"]
     subgraph Plugins["Reusable, scene-independent"]
-        HT["HandTrackingTools<br/>how hands interact"]
+        HT["HandTrackingTools<br/>hand UI (being replaced by the SDK)"]
         TV["TaskValidator<br/>how a task is measured"]
     end
     subgraph Sample["Sample environment (replaceable)"]
@@ -45,7 +46,8 @@ flowchart LR
         T["Test tasks<br/>one per existing interaction"]
         B["Validator bridge<br/>connects the two plugins"]
     end
-    HT -->|events| B
+    ISDK -->|Select pointer events| B
+    W -->|product selected or edited| B
     B -->|ReportInteraction| TV
     TV -->|runs| T
     W --- T
@@ -79,17 +81,17 @@ What it gives you: events. When a participant does something, an actor broadcast
 
 ### 3.2 TaskValidator (the validator)
 
-Modules `TaskValidator` (runtime, no XR dependency), `TaskValidatorEditor` (editor only, adds the **Task Validator** tab to Place Actors) and `TaskValidatorDemo` (optional placeholder pinch grab and cube).
+Modules `TaskValidator` (runtime, no XR dependency) and `TaskValidatorEditor` (editor only, adds the **Task Validator** tab to Place Actors). The placeholder `TaskValidatorDemo` module (a custom pinch grab and cube) was removed: real interactions come from the Meta Interaction SDK.
 
 | Piece | Role |
 | --- | --- |
 | `UTaskValidatorSubsystem` | The core. Session, participant ID, the running task, timer, counters, CSV. |
 | `AValidatorTask` | Base class for one study task placed in a level. |
 | `ATargetZoneTask` | "Put the object in this box." |
-| `AEventTask` | "Done when this event happens", or when the participant interacts with a chosen actor. |
+| `AEventTask` | "Done when this event happens", or when the participant interacts with a chosen actor or an actor with a chosen tag. |
 | `ATaskValidatorDirector` | One per level. Starts the session, gives the administrator keys and an overlay. |
 
-What it gives you: one input call, `UTaskValidatorSubsystem::ReportInteraction(this, Actor)`, and a CSV with success, attempts, time on task and time to first interaction. See [validator/DESIGN.md](validator/DESIGN.md) and [validator/GUIDE.md](validator/GUIDE.md).
+What it gives you: one input call, `UTaskValidatorSubsystem::ReportInteraction(this, Actor, Method)` (C++ or Blueprint), and a CSV with success, attempts, time on task, time to first interaction and the interaction methods used. See [validator/DESIGN.md](validator/DESIGN.md) and [validator/GUIDE.md](validator/GUIDE.md).
 
 ### 3.3 HandsTrainSample (the sample environment)
 
@@ -106,7 +108,7 @@ It also owns `Content/` (the map, Blueprints, meshes) and the project configurat
 
 ## 4. How they work together at runtime
 
-The hand tracker and the validator never call each other. The sample's bridge sits between them.
+Interaction code and the validator never call each other. The sample's bridge sits between them. Since the [Interaction SDK refactor](stories/ISDK_REFACTOR.md), the bridge listens to the Meta Interaction SDK's pointer events, not to `HandTrackingTools`.
 
 ```mermaid
 sequenceDiagram
@@ -114,16 +116,16 @@ sequenceDiagram
     participant Dir as TaskValidatorDirector
     participant Val as TaskValidatorSubsystem
     participant Task as Task actor (in sample)
-    participant Hand as HandTrackingTools
+    participant Hand as Interaction SDK
     participant Br as ValidatorBridgeSubsystem
 
     Admin->>Dir: press N
     Dir->>Val: StartNextTask
     Val->>Task: begin (timer starts)
-    Note over Hand: participant pokes, selects or places
-    Hand-->>Br: delegate event (state changed, item poked, product placed)
-    Br->>Val: ReportInteraction(this, actor)
-    Val->>Val: attempts + 1, time to first interaction
+    Note over Hand: participant pokes, ray-selects or grabs
+    Hand-->>Br: pointer event (Select) on an interactable
+    Br->>Val: ReportInteraction(this, actor, method)
+    Val->>Val: attempts + 1, time to first interaction, method
     Val->>Task: OnInteraction(actor)
     Task->>Val: MarkConditionMet (goal reached)
     Val->>Val: stop timer, write CSV row
@@ -133,25 +135,27 @@ Step by step:
 
 1. **Setup.** The level contains a `TaskValidatorDirector` and one or more task actors. The bridge needs no placing: it is a world subsystem and exists in every game world.
 2. **Start.** The administrator reads the instruction aloud and presses **N**. The validator starts the timer and marks the task active.
-3. **Interaction.** The participant touches something. A tool in HandTrackingTools raises an event on the thing touched. The bridge is already listening, and turns it into `ReportInteraction`. The bridge listens to these events:
+3. **Interaction.** The participant touches something. The Interaction SDK raises a pointer event on the interactable. The bridge is already listening, and turns it into `ReportInteraction`. The bridge listens to these events:
 
-   | Event (from HandTrackingTools or the sample) | Counts as an attempt when |
-   | --- | --- |
-   | `AInteractable::OnInteractableStateChanged` | the interactable enters the action state (a press or select). The bridge reports the **placed owner** of the interactable (see below) |
-   | `AWristToolkit::OnItemActivated` | any toolkit item is poked |
-   | `AButtonPanel::OnButtonPressed` | any panel button is pressed |
-   | `AProductPlacer::OnSelectionChanged` | a product is selected (clearing does not count) |
-   | `UProductHistorySubsystem::OnEditApplied` | a product is placed, removed, moved, rotated or resized (undo does not count) |
+   | Event | Counts as an attempt when | Method recorded |
+   | --- | --- | --- |
+   | Pointer event on any component that implements the Interaction SDK's `IIsdkIPointable` (`IsdkPokeInteractable`, `IsdkRayInteractable`, grab interactables, interactable widgets), on any actor | the event type is `Select` (a press, a ray pinch or a grab). Hover, Move, Unselect and Cancel do not count. The bridge reports the **placed owner** (see below) | from the interactable's type: `Poke`, `Ray`, `Grab` |
+   | `AProductPlacer::OnSelectionChanged` (sample content) | a product is selected (clearing does not count) | none |
+   | `UProductHistorySubsystem::OnEditApplied` (sample content) | a product is placed, removed, moved, rotated or resized (undo does not count) | none |
 
-4. **Counting.** The validator adds one attempt, sets time to first interaction on the first one, and calls the task's `OnInteraction`. Attempts are counted before the task is asked, so the attempt that completes a task is always included.
+   The bridge binds automatically to actors present at start and to actors spawned later. An actor that adds an interactable component after it spawned can be bound with `BindActor`. Any other source reports with `UValidatorBridgeSubsystem::Report(this, Actor, Method)`, from C++ or Blueprint.
+
+   The bridge no longer listens to the custom gestures in `HandTrackingTools` (`AInteractable`, `AWristToolkit`, `AButtonPanel`). Scene content that still uses them records no attempts until it is moved to Interaction SDK interactables (phase 2 of the story).
+
+4. **Counting.** The validator adds one attempt, sets time to first interaction on the first one, records the method, and calls the task's `OnInteraction`. If two sources report the same actor in the same frame, it counts once. Attempts are counted before the task is asked, so the attempt that completes a task is always included.
 5. **Completion.** The task decides when it is done and calls `MarkConditionMet()`. The validator stops the timer and appends one CSV row. Pressing **X** instead records the task as abandoned.
 6. **Outside a study** nothing happens. With no running task, `ReportInteraction` is ignored, so the bridge is harmless in normal play.
 
-**Which actor is reported.** The sample creates its interactables at runtime and attaches them to an actor placed in the level: the windmill and the crossing each spawn a hidden logic actor, and the controller box spawns its eight buttons. A task can only point at actors that exist in the level, so the bridge reports the root of the attachment chain. In practice: touching the windmill reports the **Windmill**, the crossing reports the **TrainCrossing**, and pressing any controller box button reports the **ControllerBox**.
+**Which actor is reported.** Interactables are often on a helper or child actor attached to an actor placed in the level (a button on a panel, a logic actor on the windmill). A task can only point at actors that exist in the level, so the bridge reports the root of the attachment chain: pressing any controller box button reports the **ControllerBox**. To report a child itself, give it (or any actor between it and the root) the actor tag `ValidatorTarget`; the walk up stops at the first tagged actor.
 
 ### Why a bridge, not direct calls
 
-If HandTrackingTools called the validator, every user of the tracker would need the validator. If the validator knew about the tracker's classes, it couldn't validate any other interaction method. The bridge keeps both facts true. It is about 130 lines, it lives in the sample, and a different project writes its own.
+If interaction code called the validator, every user of that code would need the validator. If the validator knew about the Interaction SDK's classes, it couldn't validate any other interaction method, and it would need the licensed SDK to build. The bridge keeps both facts true. It lives in the sample, and a different project copies it and changes only its sample-content sources.
 
 ## 5. Tutorial: implement your initial test task as an existing task within the sample
 
@@ -167,7 +171,9 @@ Do the setup in the [Software Setup Strategy](SOFTWARE_SETUP_STRATEGY.md#5-tutor
 
 ### 5.2 Option A: a selection task on something the sample already has
 
-Example: "Select the windmill." The windmill is already a ray-selectable interactable.
+Example: "Select the windmill."
+
+> **Until phase 2 of the [Interaction SDK story](stories/ISDK_REFACTOR.md):** the windmill, crossing and controller box still use the old custom interactables, which the bridge no longer counts. Before this option works, add an **IsdkRayInteractable** to the windmill (for a button, an **IsdkPokeInteractable**), and play with a pawn that has the Interaction SDK rigs.
 
 1. Drag an **Event Task** into the level.
 2. In **Details**:
@@ -215,7 +221,7 @@ Example: "Place a chair in the marked area." This one uses `AProductPlacementTas
 
 ### 5.5 Check that the bridge counted
 
-On the running task, `Attempts` in the CSV should be at least 1, and `TimeToFirstInteraction_s` should be filled in. If both are empty but the task completed, the interaction reached the task without the bridge: check that the sample module built, and that the thing you touched is one the bridge listens to (the table in section 4).
+On the running task, `Attempts` in the CSV should be at least 1, `TimeToFirstInteraction_s` should be filled in, and for an Interaction SDK interaction `InteractionMethods` names it (`Ray`, `Poke`, `Grab`). If both are empty but the task completed, the interaction reached the task without the bridge: check that the sample module built, and that the thing you touched is one the bridge listens to (the table in section 4).
 
 ## 6. Adding your own task
 
@@ -223,13 +229,14 @@ Pick the lightest option that fits:
 
 | You want | Use | Code needed |
 | --- | --- | --- |
-| "Select X" or "press X", where X is a placed actor (windmill, crossing, controller box) | `AEventTask` with X in **Complete On Interaction With** | None |
+| "Select X" or "press X", where X is a placed actor with an Interaction SDK interactable | `AEventTask` with X in **Complete On Interaction With** | None |
+| "Press this one button", where the button only exists at runtime | `AEventTask` with a tag in **Complete On Interaction With Tag**, and that tag (plus `ValidatorTarget`) on the button actor | None |
 | "Put X in this place" | `ATargetZoneTask` | None |
-| One specific runtime-spawned thing (one controller box button, a placed product) | A subclass of `AValidatorTask` in the sample, like `AProductPlacementTask` | A small class: override `OnTaskBegin` and `OnInteraction` (or `TickActiveTask`), and call `MarkConditionMet()` |
+| A condition only the sample can judge (a placed product of a type) | A subclass of `AValidatorTask` in the sample, like `AProductPlacementTask`, or a Blueprint subclass | A small class: override `OnTaskBegin` and `OnInteraction` (or `TickActiveTask`), and call `MarkConditionMet()`. In Blueprint, use the **On Task Begin** and **On Interaction** events |
 
 Put the new class in `Source/HandsTrainSample`, because it depends on the sample's content. **Do not** put it in either plugin.
 
-If your task depends on an interaction the bridge doesn't listen to yet, add one `AddUniqueDynamic` line in `UValidatorBridgeSubsystem::Bind` and one handler that calls `Report`.
+Any Interaction SDK interactable is counted with no bridge change. If your task depends on another kind of event, call `UValidatorBridgeSubsystem::Report(this, Actor, Method)` where it happens (C++ or Blueprint), or add a binding in `UValidatorBridgeSubsystem::BindSampleContent`.
 
 ## 7. Using the plugins in another project
 
@@ -240,8 +247,7 @@ If your task depends on an interaction the bridge doesn't listen to yet, add one
 
 **TaskValidator**
 1. Copy `Plugins/TaskValidator` into the other project's `Plugins` folder.
-2. Add `"TaskValidator"` to your game module's `Build.cs`, and write a bridge for your interactions (section 4).
-3. Delete the `TaskValidatorDemo` module if you don't want the placeholder grab (see the end of [validator/GUIDE.md](validator/GUIDE.md)).
+2. Add `"TaskValidator"` to your game module's `Build.cs`, and copy this sample's bridge (`ValidatorBridgeSubsystem.h/.cpp`) if you use the Interaction SDK (remove its sample-content source), or write your own (section 4).
 
 Both are C++ plugins, so the project must be a C++ project and be rebuilt after copying. Never copy `Binaries` or `Intermediate`.
 
@@ -277,6 +283,7 @@ If you skip steps 2 and 3, nothing breaks while the redirects stay in the ini.
 - **Only the bridge connects them.** Tasks and content in the sample use the plugins directly, but the plugins reach each other only through the bridge.
 - **No `/Game/` paths in plugin code.** A plugin that loads sample content isn't separate.
 - **Tasks live in the sample.** A task describes the sample's content.
-- **A new interaction means a new bridge line, not a change to a plugin.**
+- **A new interaction means no plugin change.** An Interaction SDK interactable is picked up by the bridge on its own; anything else is one `Report` call or one bridge binding.
+- **The validator never includes Interaction SDK headers.** Only the bridge does, so the validator builds without the licensed SDK.
 
-A quick check that holds the first four: `grep -r "HandsTrainSample\|TaskValidator" Plugins/HandTrackingTools` and `grep -r "HandsTrainSample\|HandTrackingTools\|OculusXR" Plugins/TaskValidator/Source/TaskValidator` should find nothing outside comments. (`TaskValidatorDemo` is the exception: it uses `HeadMountedDisplay` for its placeholder grab.)
+A quick check that holds these: `grep -r "HandsTrainSample\|TaskValidator" Plugins/HandTrackingTools` and `grep -r "HandsTrainSample\|HandTrackingTools\|OculusXR\|Isdk" Plugins/TaskValidator/Source` should find nothing outside comments.

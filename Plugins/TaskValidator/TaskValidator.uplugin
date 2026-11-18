@@ -1,9 +1,9 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
-	"VersionName": "0.1.0",
+	"Version": 2,
+	"VersionName": "0.2.0",
 	"FriendlyName": "Task Validator",
-	"Description": "Records task success, attempts, time on task and time to first interaction for hand tracking user studies, and writes one CSV per session.",
+	"Description": "Records task success, attempts, time on task, time to first interaction and the interaction methods used for hand tracking user studies, and writes one CSV per session. Knows nothing about any interaction system: interaction code reports to it.",
 	"Category": "Testing",
 	"CreatedBy": "Hand Tracking UI Library team",
 	"CanContainContent": false,
@@ -16,20 +16,9 @@
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "TaskValidatorDemo",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
 			"Name": "TaskValidatorEditor",
 			"Type": "Editor",
 			"LoadingPhase": "PostEngineInit"
-		}
-	],
-	"Plugins": [
-		{
-			"Name": "XRBase",
-			"Enabled": true
 		}
 	]
 }

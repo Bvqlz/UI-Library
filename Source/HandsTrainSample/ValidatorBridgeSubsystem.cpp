@@ -7,13 +7,14 @@ LICENSE file in the root directory of this source tree.
 */
 
 #include "ValidatorBridgeSubsystem.h"
-#include "ButtonPanel.h"
+#include "Components/ActorComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
-#include "Interactable.h"
-#include "ProductHistorySubsystem.h"
 #include "ProductPlacer.h"
 #include "TaskValidatorSubsystem.h"
+#include "TimerManager.h"
+
+const FName UValidatorBridgeSubsystem::TargetTag(TEXT("ValidatorTarget"));
 
 bool UValidatorBridgeSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
@@ -26,10 +27,6 @@ void UValidatorBridgeSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
 
-	for (TActorIterator<AActor> It(&InWorld); It; ++It)
-	{
-		Bind(*It);
-	}
 	ActorSpawnedHandle = InWorld.AddOnActorSpawnedHandler(
 		FOnActorSpawned::FDelegate::CreateUObject(this, &UValidatorBridgeSubsystem::HandleActorSpawned));
 
@@ -37,6 +34,12 @@ void UValidatorBridgeSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	{
 		History->OnEditApplied.AddUniqueDynamic(this, &UValidatorBridgeSubsystem::HandleProductEdit);
 	}
+
+	// Subsystems begin play before the level's actors do, and some actors (Interaction SDK widgets, Blueprints)
+	// create their interactable components in BeginPlay. Bind now, and again next tick once those exist.
+	// Binding is AddUnique, so binding twice is harmless.
+	BindAllActors();
+	InWorld.GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateUObject(this, &UValidatorBridgeSubsystem::BindAllActors));
 }
 
 void UValidatorBridgeSubsystem::Deinitialize()
@@ -48,84 +51,126 @@ void UValidatorBridgeSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
-void UValidatorBridgeSubsystem::HandleActorSpawned(AActor* Actor)
+void UValidatorBridgeSubsystem::BindAllActors()
 {
-	Bind(Actor);
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		BindActor(*It);
+	}
 }
 
-void UValidatorBridgeSubsystem::Bind(AActor* Actor)
+void UValidatorBridgeSubsystem::HandleActorSpawned(AActor* Actor)
 {
-	// AddUnique, so binding an actor twice (it existed at start and was also seen spawning) is harmless
-	if (AInteractable* Interactable = Cast<AInteractable>(Actor))
+	BindActor(Actor);
+}
+
+void UValidatorBridgeSubsystem::BindActor(AActor* Actor)
+{
+	if (!IsValid(Actor))
 	{
-		Interactable->OnInteractableStateChanged.AddUniqueDynamic(this, &UValidatorBridgeSubsystem::HandleInteractableState);
+		return;
 	}
-	else if (AWristToolkit* Toolkit = Cast<AWristToolkit>(Actor))
+	BindIsdkPointables(Actor);
+	BindSampleContent(Actor);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Reporting
+
+void UValidatorBridgeSubsystem::Report(const UObject* WorldContext, AActor* Actor, FName Method, bool bResolveOwner)
+{
+	UTaskValidatorSubsystem::ReportInteraction(WorldContext, bResolveOwner ? ResolveReportedActor(Actor) : Actor, Method);
+}
+
+AActor* UValidatorBridgeSubsystem::ResolveReportedActor(AActor* Actor)
+{
+	// Interactables are often on a spawned helper or a child actor attached to a placed actor (a button on a panel,
+	// a logic actor on the windmill). A task can only name actors placed in the level, so walk up to the placed
+	// owner. A ValidatorTarget tag on the way up stops the walk, for when the child itself is what a task names.
+	for (AActor* Current = Actor; Current; Current = Current->GetAttachParentActor())
 	{
-		Toolkit->OnItemActivated.AddUniqueDynamic(this, &UValidatorBridgeSubsystem::HandleToolkitItem);
+		if (Current->ActorHasTag(TargetTag) || !Current->GetAttachParentActor())
+		{
+			return Current;
+		}
 	}
-	else if (AButtonPanel* Panel = Cast<AButtonPanel>(Actor))
+	return nullptr;
+}
+
+FName UValidatorBridgeSubsystem::MethodFromInteractable(const UObject* Interactable)
+{
+	if (!Interactable)
 	{
-		Panel->OnButtonPressed.AddUniqueDynamic(this, &UValidatorBridgeSubsystem::HandleButtonPanel);
+		return NAME_None;
 	}
-	else if (AProductPlacer* Placer = Cast<AProductPlacer>(Actor))
+
+	// Use the native class, so a Blueprint subclass of IsdkRayInteractable still reads as Ray
+	const UClass* Class = Interactable->GetClass();
+	while (Class && !Class->HasAnyClassFlags(CLASS_Native))
+	{
+		Class = Class->GetSuperClass();
+	}
+
+	// IsdkPokeInteractable -> Poke, IsdkRayInteractable -> Ray, IsdkGrabbableComponent -> Grab
+	FString Name = Class ? Class->GetName() : FString();
+	Name.RemoveFromStart(TEXT("Isdk"));
+	Name.RemoveFromEnd(TEXT("Component"));
+	Name.RemoveFromEnd(TEXT("Interactable"));
+	Name.RemoveFromEnd(TEXT("bable")); // Grabbable -> Grab
+	return Name.IsEmpty() ? NAME_None : FName(*Name);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Source 1: Interaction SDK
+
+void UValidatorBridgeSubsystem::BindIsdkPointables(AActor* Actor)
+{
+	TInlineComponentArray<UActorComponent*> Components(Actor);
+	for (UActorComponent* Component : Components)
+	{
+		if (!Component || !Component->Implements<UIsdkIPointable>())
+		{
+			continue;
+		}
+		if (IIsdkIPointable* Pointable = Cast<IIsdkIPointable>(Component))
+		{
+			Pointable->GetInteractionPointerEventDelegate().AddUniqueDynamic(
+				this, &UValidatorBridgeSubsystem::HandleIsdkPointerEvent);
+		}
+	}
+}
+
+void UValidatorBridgeSubsystem::HandleIsdkPointerEvent(const FIsdkInteractionPointerEvent& PointerEvent)
+{
+	// Select is the press, the pinch or the grab: the study's "grabbed or selected an object".
+	// Hover, Move, Unselect and Cancel are not attempts.
+	if (PointerEvent.Type != EIsdkPointerEventType::Select)
+	{
+		return;
+	}
+
+	UObject* Interactable = PointerEvent.Interactable.GetObject();
+	const UActorComponent* Component = Cast<UActorComponent>(Interactable);
+	Report(this, Component ? Component->GetOwner() : nullptr, MethodFromInteractable(Interactable));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Source 2: sample content (not gestures: these fire however the participant chose the product)
+
+void UValidatorBridgeSubsystem::BindSampleContent(AActor* Actor)
+{
+	if (AProductPlacer* Placer = Cast<AProductPlacer>(Actor))
 	{
 		Placer->OnSelectionChanged.AddUniqueDynamic(this, &UValidatorBridgeSubsystem::HandleProductSelected);
 	}
 }
 
-AActor* UValidatorBridgeSubsystem::OwnerOf(AActor* Actor)
-{
-	// The sample spawns its interactables at runtime and attaches them to a placed actor: the windmill and
-	// the crossing each spawn a hidden logic actor, and the controller box spawns its eight buttons. A task
-	// can only name actors that exist in the level, so report the placed owner, not the spawned helper
-	while (Actor && Actor->GetAttachParentActor())
-	{
-		Actor = Actor->GetAttachParentActor();
-	}
-	return Actor;
-}
-
-void UValidatorBridgeSubsystem::Report(AActor* Actor) const
-{
-	UTaskValidatorSubsystem::ReportInteraction(this, Actor);
-}
-
-void UValidatorBridgeSubsystem::HandleInteractableState(const FInteractableStateArgs& StateArgs)
-{
-	// Entering the action state is the "press": hovering or touching alone is not an attempt
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState &&
-		StateArgs.OldInteractableState != EInteractableState::ActionState)
-	{
-		Report(OwnerOf(StateArgs.Interactable));
-	}
-}
-
-void UValidatorBridgeSubsystem::HandleToolkitItem(EWristToolkitItem /*Item*/)
-{
-	// The toolkit does not pass itself, so find it again; there is one per level
-	AActor* Toolkit = LastToolkitOwner.Get();
-	if (!Toolkit)
-	{
-		const TActorIterator<AWristToolkit> It(GetWorld());
-		Toolkit = It ? *It : nullptr;
-		LastToolkitOwner = Toolkit;
-	}
-	Report(Toolkit);
-}
-
-void UValidatorBridgeSubsystem::HandleButtonPanel(int32 /*ButtonIndex*/, const FText& /*Label*/)
-{
-	const TActorIterator<AButtonPanel> It(GetWorld());
-	Report(It ? *It : nullptr);
-}
-
 void UValidatorBridgeSubsystem::HandleProductSelected(AFurnitureProduct* Product)
 {
-	// Clearing the selection is not an attempt
+	// Clearing the selection is not an attempt. The product is placed in the level, so report it as is.
 	if (Product)
 	{
-		Report(Product);
+		Report(this, Product, NAME_None, /*bResolveOwner=*/ false);
 	}
 }
 
@@ -143,12 +188,12 @@ void UValidatorBridgeSubsystem::HandleProductEdit(const FProductEdit& Edit, bool
 	{
 		for (AFurnitureProduct* Candidate : History->GetProducts())
 		{
-			if (Candidate->ProductGuid == Edit.ProductGuid)
+			if (Candidate && Candidate->ProductGuid == Edit.ProductGuid)
 			{
 				Product = Candidate;
 				break;
 			}
 		}
 	}
-	Report(Product);
+	Report(this, Product, NAME_None, /*bResolveOwner=*/ false);
 }

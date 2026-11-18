@@ -9,29 +9,48 @@ LICENSE file in the root directory of this source tree.
 #pragma once
 
 #include "CoreMinimal.h"
-#include "FurnitureProduct.h"
-#include "Interactable.h"
 #include "ProductHistorySubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
-#include "WristToolkit.h"
+
+// Meta XR Interaction SDK (OculusInteraction plugin): the pointer event payload and the pointable interface.
+// If the first build can't find one of these, search the installed plugin for FIsdkInteractionPointerEvent and
+// UIsdkIPointable and fix the path here. Nothing else in the project includes Interaction SDK headers for the bridge.
+#include "StructTypes.h"
+#include "Interaction/Pointable/IsdkIPointable.h"
+
 #include "ValidatorBridgeSubsystem.generated.h"
 
+class AFurnitureProduct;
+
 /**
- * The only place where the HandTrackingTools plugin and the TaskValidator plugin meet.
+ * The only place where interaction code and the TaskValidator plugin meet.
  *
- * Neither plugin knows about the other. HandTrackingTools raises events when a participant touches
- * something (a poke button fires, a ray selects, a wrist item is poked, a product is selected or
- * edited). This subsystem listens to those events and turns each one into the validator's single
- * input call:
+ * The validator knows nothing about hands. This subsystem listens to interactions and turns each one into the
+ * validator's single input call:
  *
- *     UTaskValidatorSubsystem::ReportInteraction(this, TheActorTouched);
+ *     UTaskValidatorSubsystem::ReportInteraction(this, TheActorInteractedWith, Method);
  *
- * That call counts an attempt on whatever task is running and sets the time to first interaction.
- * It does nothing when no task is running, so the bridge is harmless outside a study.
+ * That call counts an attempt on whatever task is running, sets the time to first interaction and records the
+ * method. It does nothing when no task is running, so the bridge is harmless outside a study.
  *
- * It needs no setup. It is created with every game world, binds to what is already in the level, and
- * binds to actors spawned later. To validate a different interaction in another project, write a
- * bridge like this one; the plugins do not change.
+ * Sources it listens to:
+ *
+ * 1. Interaction SDK (automatic, general). Every component that implements IIsdkIPointable (poke, ray and grab
+ *    interactables, interactable widgets) on every actor, present at start or spawned later. A Select pointer event
+ *    is one attempt; Hover, Move, Unselect and Cancel are not. The method is the interactable's type
+ *    (IsdkPokeInteractable -> Poke, IsdkRayInteractable -> Ray, IsdkGrabbableComponent -> Grab).
+ *    No setup: add an Interaction SDK interactable to an actor and it is counted.
+ *
+ * 2. Sample content that is not a gesture: a furniture product selected (AProductPlacer) and a product edit
+ *    applied (UProductHistorySubsystem). These keep the sample's placement task working.
+ *
+ * 3. Anything else: call UValidatorBridgeSubsystem::Report(this, Actor, Method) from C++ or Blueprint.
+ *
+ * Which actor is reported: the placed owner, i.e. the root of the attachment chain, because a task can only name
+ * actors that exist in the level. Put the tag ValidatorTarget on an actor in the chain to report that actor instead.
+ *
+ * It needs no setup. It is created with every game world. To validate interactions in another project, copy this
+ * bridge and change the sources in section 2; the plugins do not change.
  */
 UCLASS()
 class HANDSTRAINSAMPLE_API UValidatorBridgeSubsystem : public UWorldSubsystem
@@ -39,23 +58,47 @@ class HANDSTRAINSAMPLE_API UValidatorBridgeSubsystem : public UWorldSubsystem
 	GENERATED_BODY()
 
 public:
+	/** Actor tag that stops the walk up the attachment chain: the tagged actor is reported. */
+	static const FName TargetTag;
+
+	/**
+	 * Report one interaction to the validator from any source.
+	 * @param Actor         What the participant interacted with. May be null (the attempt still counts).
+	 * @param Method        How, e.g. Poke, Ray, Grab. Optional.
+	 * @param bResolveOwner Report the placed owner of Actor (see the class comment) instead of Actor itself.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Task Validator", meta = (WorldContext = "WorldContext", AdvancedDisplay = "bResolveOwner"))
+	static void Report(const UObject* WorldContext, AActor* Actor, FName Method = NAME_None, bool bResolveOwner = true);
+
+	/**
+	 * Bind to an actor's Interaction SDK interactables. Done automatically for actors present at start and actors
+	 * spawned later; call it for an actor that adds interactable components after it was spawned.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Task Validator")
+	void BindActor(AActor* Actor);
+
+	/** The actor a report about Actor names: the first ValidatorTarget-tagged actor up the chain, else the root. */
+	static AActor* ResolveReportedActor(AActor* Actor);
+
+	/** The method name for an Interaction SDK interactable, from its native class name: Poke, Ray, Grab, ... */
+	static FName MethodFromInteractable(const UObject* Interactable);
+
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 	virtual void Deinitialize() override;
 
 private:
-	void Bind(AActor* Actor);
+	void BindAllActors();
 	void HandleActorSpawned(AActor* Actor);
 
-	/** Poke buttons, ray targets and the like: the participant "pressed" it. */
-	UFUNCTION()
-	void HandleInteractableState(const FInteractableStateArgs& StateArgs);
+	// Source 1: Interaction SDK
+	void BindIsdkPointables(AActor* Actor);
 
 	UFUNCTION()
-	void HandleToolkitItem(EWristToolkitItem Item);
+	void HandleIsdkPointerEvent(const FIsdkInteractionPointerEvent& PointerEvent);
 
-	UFUNCTION()
-	void HandleButtonPanel(int32 ButtonIndex, const FText& Label);
+	// Source 2: sample content
+	void BindSampleContent(AActor* Actor);
 
 	UFUNCTION()
 	void HandleProductSelected(AFurnitureProduct* Product);
@@ -64,11 +107,5 @@ private:
 	UFUNCTION()
 	void HandleProductEdit(const FProductEdit& Edit, bool bWasUndo);
 
-	/** The placed actor an interactable belongs to: the root of its attachment chain, or itself. */
-	static AActor* OwnerOf(AActor* Actor);
-
-	void Report(AActor* Actor) const;
-
 	FDelegateHandle ActorSpawnedHandle;
-	TWeakObjectPtr<AActor> LastToolkitOwner;
 };

@@ -29,13 +29,14 @@ How it works and why it's built this way: see `DESIGN.md` in this folder. How it
    ```
 3. Don't copy any `Binaries` or `Intermediate` folders from another project. They get rebuilt.
 
-The plugin has three code modules. You don't need to do anything with them; this is for reference:
+The plugin has two code modules. You don't need to do anything with them; this is for reference:
 
 | Module | Loaded in | Purpose |
 | --- | --- | --- |
 | `TaskValidator` | Editor and game | The validator itself |
-| `TaskValidatorDemo` | Editor and game | Placeholder pinch grab and cube for demos |
 | `TaskValidatorEditor` | Editor only | Adds the **Task Validator** tab to the Place Actors panel |
+
+The validator has no interaction code of its own. Something has to report interactions to it: in this repository that is the sample's bridge, which counts the Meta Interaction SDK's poke, ray and grab selections (see [../PLUGIN_ARCHITECTURE.md](../PLUGIN_ARCHITECTURE.md#4-how-they-work-together-at-runtime)). In another project, write a bridge or call `UTaskValidatorSubsystem::ReportInteraction` (C++ or Blueprint) from your interaction code.
 
 ---
 
@@ -68,15 +69,13 @@ It succeeded if it ends with `Result: Succeeded`.
 ### Confirm it loaded
 
 1. **Edit → Plugins**, then search `Task Validator`. It should be listed under **Project → Testing** with its checkbox **ticked**. If it's unticked, tick it and restart the editor.
-2. **Window → Place Actors.** In the left column of category tabs, there should be a **Task Validator** tab (a test-tube style icon) with five actors:
+2. **Window → Place Actors.** In the left column of category tabs, there should be a **Task Validator** tab (a test-tube style icon) with three actors:
    - Task Validator Director
    - Target Zone Task
    - Event Task
-   - Demo Pinch Grabber
-   - Demo Grabbable Cube
 
 **If you don't see the Task Validator tab**, you're running an older build from before that tab existed. Close the editor and do Option A again. In the meantime, you can still find the actors either of these ways:
-- **Content Browser:** click **Settings** (top-right of the Content Browser) and tick **Show C++ Classes** and **Show Plugin Content**. Then in the folder tree, open **TaskValidator C++ Classes → TaskValidator → Public** and drag a class into the viewport. The demo actors are under **TaskValidatorDemo → Public**.
+- **Content Browser:** click **Settings** (top-right of the Content Browser) and tick **Show C++ Classes** and **Show Plugin Content**. Then in the folder tree, open **TaskValidator C++ Classes → TaskValidator → Public** and drag a class into the viewport.
 - **Place Actors search box:** type `Target Zone` and similar names. The search covers all classes.
 
 ---
@@ -85,7 +84,9 @@ It succeeded if it ends with `Result: Succeeded`.
 
 Everything here happens in the editor's Details panel. No Blueprints.
 
-> **Shortcut:** Part 3 builds a demo with the placeholder cube. To use the sample's own content instead (select the windmill, place a chair), follow [section 5 of PLUGIN_ARCHITECTURE.md](../PLUGIN_ARCHITECTURE.md#5-tutorial-implement-your-initial-test-task-as-an-existing-task-within-the-sample). The Director and level steps are the same.
+> **Before you start:** the cube is grabbed with the Meta Interaction SDK, so the Interaction SDK plugin must be installed (README step 4) and the pawn you play with must have the Interaction SDK hand rigs (`IsdkHandRigComponentLeft` and `IsdkHandRigComponentRight`, see Meta's *Getting Started with Interaction SDK*). The sample's own pawn still uses the old custom tools until phase 2 of [the Interaction SDK story](../stories/ISDK_REFACTOR.md).
+>
+> **Shortcut:** to use the sample's own content instead (select the windmill, place a chair), follow [section 5 of PLUGIN_ARCHITECTURE.md](../PLUGIN_ARCHITECTURE.md#5-tutorial-implement-your-initial-test-task-as-an-existing-task-within-the-sample). The Director and level steps are the same.
 
 ### 3.1 Make a copy of the level
 
@@ -106,13 +107,15 @@ Open **Window → Place Actors → Task Validator** and drag each actor into the
 | Validator → Participant Id | `P01` |
 | Validator → Show Admin Overlay | ticked |
 
-**B. Demo Pinch Grabber** (one per level; its position doesn't matter). Leave the defaults.
-
-**C. Demo Grabbable Cube**
+**B. A grabbable cube** (Interaction SDK)
+- From **Place Actors → Shapes**, drag in a **Cube**. In the Details panel set **Scale** to `0.1, 0.1, 0.1` (a 10 cm cube) and **Mobility** to **Movable**.
 - Place it about **60 cm in front of the Player Start** and about **120 cm above the floor**. In the Details panel under **Transform → Location**, take the Player Start's location and add roughly 60 in the facing direction and 120 to Z.
+- Click **+ Add**, add an **IsdkGrabbableComponent**, then add an **IsdkGrabTransformer** so the cube follows the hand. On the grabbable, allow **Hand Grab** and the **Pinch** input method.
 - Leave **Simulate Physics** unticked for the demo, so the cube floats where you let go of it.
 
-**D. Target Zone Task** (the invisible "put it here" box)
+Nothing else is needed for the validator: the bridge finds the Interaction SDK component and counts each grab.
+
+**C. Target Zone Task** (the invisible "put it here" box)
 - Place it about **40 cm to the left or right of the cube**, at the same height.
 - In the Details panel:
 
@@ -122,7 +125,7 @@ Open **Window → Place Actors → Task Validator** and drag each actor into the
 | Validator → Task Name | `CubeToMarker` |
 | Validator → Order | `1` |
 | Validator → Instruction | `In this task, move the cube into the box. Begin when you're ready.` |
-| Validator → Zone → Target Actor | the cube. Click the dropdown and pick `DemoGrabbableCube`, or click the **eyedropper** and then click the cube in the viewport. |
+| Validator → Zone → Target Actor | the cube. Click the **eyedropper** and then click the cube in the viewport. |
 | Validator → Zone → Rotation Check | `Ignore` |
 | Validator → Zone → Dwell Seconds | `0.5` |
 | Validator → Zone → Show Zone In Game | ticked |
@@ -158,7 +161,7 @@ Do this before recording, to confirm the setup is right.
 6. Press **Esc** to stop playing.
 7. Open `<repo>\Saved\ValidatorLogs\P01_validator.csv`. It should have one row.
 
-Attempts will be 0 here, because there's no hand grab on desktop. To fake one, open the console with the **`** key (backquote) and type `Validator.FakeInteraction`.
+Attempts will be 0 here, because there's no hand grab on desktop. To fake one (recorded with the method `Console`), open the console with the **`** key (backquote) and type `Validator.FakeInteraction`.
 
 Every action has a console command, useful if keyboard focus is a problem:
 
@@ -192,14 +195,14 @@ Start a screen recorder on the PC. **Win+Alt+R** (Xbox Game Bar) works, or use O
 
 ### 5.4 Demo script (about 2 minutes)
 1. **Intro:** "This is the validator. It times each task and counts attempts automatically, and writes a CSV per participant." Point at the overlay.
-2. **Task 1:** read the instruction aloud, then press **N**. Pinch the cube (thumb to index fingertip; a small sphere at your fingertips turns green while pinching), move it into the box and let go. Point out that the attempts counter went up when you grabbed, the box turned green, and the task completed.
+2. **Task 1:** read the instruction aloud, then press **N**. Pinch the cube (thumb to index fingertip), move it into the box and let go. Point out that the attempts counter went up when you grabbed and the overlay shows `via Grab`, the box turned green, and the task completed.
 3. **Task 2:** press **N**. Press **H** once ("the participant asked for help, so it's logged and the task is marked as assisted"). Then press **X** ("the participant chose to stop, so it's recorded as not completed").
 4. Stop play, open the CSV in Excel, and walk through the columns (Part 6).
 5. **Closing points:**
-   - It's a standalone plugin, and hooking up any interaction is one line of C++: `UTaskValidatorSubsystem::ReportInteraction(this, Actor);`
+   - It's a standalone plugin. The sample's bridge counts every Meta Interaction SDK poke, ray and grab automatically; anything else is one call: `UTaskValidatorSubsystem::ReportInteraction(this, Actor, Method)`, from C++ or Blueprint.
    - Tasks are set up in the editor, not hardcoded. Target-zone tasks cover move and place; event tasks cover press, select and menus.
    - The CSV uses the participant/group/task labels from the study plan.
-   - The pinch grab is a placeholder until the team chooses the interaction method.
+   - The grab is the Interaction SDK's own, the same one the study will use, so the CSV records the SDK interaction and not our code.
 
 ---
 
@@ -214,12 +217,13 @@ File: `<Project>\Saved\ValidatorLogs\P01_validator.csv`. A second run for the sa
 | Result | `Completed` or `Abandoned` (the participant stopped) |
 | Assisted | 1 if any intervention was logged |
 | Interventions | Number of times H was pressed |
-| Attempts | Grabs or selections during the task |
+| Attempts | Grabs or selections during the task. One action seen by two sources in the same frame counts once. |
 | TimeToFirstInteraction_s | Seconds from N to the first grab. Blank if there was none. |
 | TimeOnTask_s | Seconds from N to completed or abandoned |
 | StartUtc, EndUtc | Timestamps |
 | PositionError_cm | Distance from the object to the zone centre at the end |
 | RotationError_deg | Rotation error at the end. Blank when Rotation Check is Ignore. |
+| InteractionMethods | The interaction methods used during the task, in the order first used, such as `Grab` or `Ray;Poke`. Blank if no interaction named one. |
 
 ---
 
@@ -235,10 +239,8 @@ File: `<Project>\Saved\ValidatorLogs\P01_validator.csv`. A second run for the sa
 | N / H / X do nothing | Click the game window first. In desktop PIE, **Shift+F1** frees the mouse. Or use the console commands. |
 | Zone never turns green | Check that **Target Actor** is set on the zone, and that the cube's centre is actually inside the box. |
 | Turns green but never completes | The cube is still moving or still held. Let go and keep it still for 0.5 s. |
-| Can't grab the cube in VR | The pinch sphere must be within about 6 cm of the cube. The level needs a **Demo Pinch Grabber**. |
+| Can't grab the cube in VR | The cube needs an **IsdkGrabbableComponent** and must be **Movable**, and the pawn needs the Interaction SDK hand rigs. |
+| Grabs work but Attempts stays 0 | The bridge didn't see the grab. Run `log LogTaskValidator Verbose` to see each counted attempt, and see [the Interaction SDK story](../stories/ISDK_REFACTOR.md#risks-and-notes). |
 | No hands in VR Preview | Turn on Developer Runtime Features and make Link the OpenXR runtime (Part 5.1). |
 | VR Preview is greyed out | The headset isn't in Quest Link, or Link isn't the active OpenXR runtime. |
 | Low FPS on Quest 2 | A known sample issue. Run the console command `r.AllowOcclusionQueries 0`. |
-
-### Removing the demo module for a real study build
-Delete `Plugins/TaskValidator/Source/TaskValidatorDemo`. Remove its entry from `TaskValidator.uplugin`, and remove `"TaskValidatorDemo"` and the two demo lines from `Source\TaskValidatorEditor` (the Build.cs and the `Add(ADemo…)` lines). Then rebuild.

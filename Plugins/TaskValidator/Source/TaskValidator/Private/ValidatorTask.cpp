@@ -52,6 +52,17 @@ void AValidatorTask::BeginTask()
 	bTaskActive = true;
 	SetActorTickEnabled(true);
 	OnTaskBegin();
+	ReceiveTaskBegin();
+}
+
+void AValidatorTask::HandleInteraction(AActor* InteractedActor, FName Method)
+{
+	OnInteraction(InteractedActor);
+	// The C++ handler may already have completed the task
+	if (bTaskActive)
+	{
+		ReceiveInteraction(InteractedActor, Method);
+	}
 }
 
 void AValidatorTask::EndTask(EValidatorTaskResult Result, FValidatorTaskRecord& InOutRecord)
