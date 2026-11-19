@@ -16,6 +16,36 @@ LICENSE file in the root directory of this source tree.
 #include "HandsVisualizationSwitcher.h"
 #include <Components/StaticMeshComponent.h>
 
+#define LOCTEXT_NAMESPACE "ControllerBox"
+
+namespace
+{
+	struct FControllerBoxButtonInfo
+	{
+		const TCHAR* ComponentName;
+		/** The anchor component in BP_ControllerBox, placed from the FBX. */
+		const TCHAR* AnchorName;
+		FText Label;
+	};
+
+	/** Indexed by EControllerBoxButton. */
+	const TArray<FControllerBoxButtonInfo>& ButtonInfos()
+	{
+		static const TArray<FControllerBoxButtonInfo> Infos = {
+			{ TEXT("SmokeButton"), TEXT("SmokeButtonAnchor"), LOCTEXT("Smoke", "Smoke") },
+			{ TEXT("WhistleButton"), TEXT("WhistleButtonAnchor"), LOCTEXT("Whistle", "Whistle") },
+			{ TEXT("MooCowButton"), TEXT("MooCowButtonAnchor"), LOCTEXT("Moo", "Moo") },
+			{ TEXT("HandStyleButton"), TEXT("HandStyleButtonAnchor"), LOCTEXT("Hands", "Hands") },
+			{ TEXT("ReverseButton"), TEXT("ReverseButtonAnchor"), LOCTEXT("Reverse", "Reverse") },
+			{ TEXT("SpeedUpButton"), TEXT("SpeedUpButtonAnchor"), LOCTEXT("Faster", "Faster") },
+			{ TEXT("SlowDownButton"), TEXT("SlowDownButtonAnchor"), LOCTEXT("Slower", "Slower") },
+			{ TEXT("StartStopButton"), TEXT("StartStopButtonAnchor"), LOCTEXT("StartStop", "Start / Stop") },
+		};
+		static_assert(static_cast<int32>(EControllerBoxButton::Count) == 8, "Update ButtonInfos with EControllerBoxButton");
+		return Infos;
+	}
+}
+
 const float AControllerBox::TotalFollowDuration = 3.0f;
 const float AControllerBox::HmdMovementThreshold = 30.0f;
 
@@ -28,6 +58,42 @@ AControllerBox::AControllerBox()
 	MinDepthToHMD = 5.0f;
 	LastMovedToPos = FVector::ZeroVector;
 	PanelOffsetFromHMD = FVector(30.0f, 0.0f, -40.0f);
+}
+
+void AControllerBox::CreateButtons()
+{
+	// One Interaction SDK poke button per action, on the anchor placed from ControllerBox.fbx so the layout is kept.
+	// Created at runtime because the anchors are Blueprint components.
+	const TArray<FControllerBoxButtonInfo>& Infos = ButtonInfos();
+	Buttons.Reset();
+	Buttons.SetNum(Infos.Num());
+
+	for (int32 Index = 0; Index < Infos.Num(); ++Index)
+	{
+		const FControllerBoxButtonInfo& Info = Infos[Index];
+		USceneComponent* Anchor = Cast<USceneComponent>(GetDefaultSubobjectByName(FName(Info.AnchorName)));
+		if (!Anchor)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Controller box found no %s, so it has no %s"), Info.AnchorName, Info.ComponentName);
+			continue;
+		}
+
+		UIsdkRoundedButtonComponent* Button = NewObject<UIsdkRoundedButtonComponent>(this, FName(Info.ComponentName));
+		Button->ButtonSize = ButtonSize;
+		Button->SetupAttachment(Anchor);
+		Button->SetRelativeRotation(ButtonRotationOffset);
+		Button->RegisterComponent();
+		Button->SetLabelText(Info.Label);
+		Button->SetLabelSize(ButtonLabelSize);
+		AddInstanceComponent(Button);
+		Buttons[Index] = Button;
+	}
+}
+
+UIsdkRoundedButtonComponent* AControllerBox::GetButton(EControllerBoxButton Button) const
+{
+	const int32 Index = static_cast<int32>(Button);
+	return Buttons.IsValidIndex(Index) ? Buttons[Index].Get() : nullptr;
 }
 
 void AControllerBox::FindLocomotive()
@@ -76,116 +142,20 @@ void AControllerBox::BeginPlay()
 
 	bIsLerpingToHMD = false;
 
-	FindAnchors();
-	SpawnButtonsAtAnchorPositions();
+	CreateButtons();
 	HookUpButtonEvents();
-}
-
-void AControllerBox::FindAnchors()
-{
-	/**
-	 * These anchors should are found from the blueprint
-	 * based on the position of the buttons in the FBX.
-	 * The button actors are then spawned at runtime,
-	 * so that they are easier to access compared to
-	 * child actor components.
-	 */
-	SmokeButtonAnchorComp = (USceneComponent*)GetDefaultSubobjectByName(
-		FName(TEXT("SmokeButtonAnchor")));
-	WhistleButtonAnchorComp = (USceneComponent*)GetDefaultSubobjectByName(
-		FName(TEXT("WhistleButtonAnchor")));
-	MooCowButtonAnchorComp = (USceneComponent*)GetDefaultSubobjectByName(
-		FName(TEXT("MooCowButtonAnchor")));
-	HandStyleButtonAnchorComp = (USceneComponent*)GetDefaultSubobjectByName(
-		FName(TEXT("HandStyleButtonAnchor")));
-	ReverseButtonAnchorComp = (USceneComponent*)GetDefaultSubobjectByName(
-		FName(TEXT("ReverseButtonAnchor")));
-	SpeedUpButtonAnchorComp = (USceneComponent*)GetDefaultSubobjectByName(
-		FName(TEXT("SpeedUpButtonAnchor")));
-	SlowDownButtonAnchorComp = (USceneComponent*)GetDefaultSubobjectByName(
-		FName(TEXT("SlowDownButtonAnchor")));
-	StartStopButtonAnchorComp = (USceneComponent*)GetDefaultSubobjectByName(
-		FName(TEXT("StartStopButtonAnchor")));
-}
-
-void AControllerBox::SpawnButtonsAtAnchorPositions()
-{
-	SmokeButtonActor = GetWorld()->SpawnActor<AInteractableButton>(
-		InteractableButtonBP,
-		SmokeButtonAnchorComp->GetComponentLocation(),
-		SmokeButtonAnchorComp->GetComponentRotation());
-	SmokeButtonActor->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-	WhistleButtonActor = GetWorld()->SpawnActor<AInteractableButton>(
-		InteractableButtonBP,
-		WhistleButtonAnchorComp->GetComponentLocation(),
-		WhistleButtonAnchorComp->GetComponentRotation());
-	WhistleButtonActor->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-	MooCowButtonActor = GetWorld()->SpawnActor<AInteractableButton>(
-		InteractableButtonBP,
-		MooCowButtonAnchorComp->GetComponentLocation(),
-		MooCowButtonAnchorComp->GetComponentRotation());
-	MooCowButtonActor->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-	HandStyleButtonActor = GetWorld()->SpawnActor<AInteractableButton>(
-		InteractableButtonBP,
-		HandStyleButtonAnchorComp->GetComponentLocation(),
-		HandStyleButtonAnchorComp->GetComponentRotation());
-	HandStyleButtonActor->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-
-	ReverseButtonActor = GetWorld()->SpawnActor<AInteractableButton>(
-		InteractableButtonBP,
-		ReverseButtonAnchorComp->GetComponentLocation(),
-		ReverseButtonAnchorComp->GetComponentRotation());
-	ReverseButtonActor->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-	SpeedUpButtonActor = GetWorld()->SpawnActor<AInteractableButton>(
-		InteractableButtonBP,
-		SpeedUpButtonAnchorComp->GetComponentLocation(),
-		SpeedUpButtonAnchorComp->GetComponentRotation());
-	SpeedUpButtonActor->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-	SlowDownButtonActor = GetWorld()->SpawnActor<AInteractableButton>(
-		InteractableButtonBP,
-		SlowDownButtonAnchorComp->GetComponentLocation(),
-		SlowDownButtonAnchorComp->GetComponentRotation());
-	SlowDownButtonActor->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-	StartStopButtonActor = GetWorld()->SpawnActor<AInteractableButton>(
-		InteractableButtonBP,
-		StartStopButtonAnchorComp->GetComponentLocation(),
-		StartStopButtonAnchorComp->GetComponentRotation());
-	StartStopButtonActor->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
 }
 
 void AControllerBox::HookUpButtonEvents()
 {
-	SmokeButtonActor->OnInteractableStateChanged.AddDynamic(this,
-		&AControllerBox::SmokeButtonStateChanged);
-
-	WhistleButtonActor->OnInteractableStateChanged.AddDynamic(this,
-		&AControllerBox::WhistleButtonStateChanged);
-
-	MooCowButtonActor->OnInteractableStateChanged.AddDynamic(this,
-		&AControllerBox::GoCowGo);
-
-	HandStyleButtonActor->OnInteractableStateChanged.AddDynamic(this,
-		&AControllerBox::HandStyleButtonStateChanged);
-
-	ReverseButtonActor->OnInteractableStateChanged.AddDynamic(this,
-		&AControllerBox::ReverseButtonStateChanged);
-
-	SpeedUpButtonActor->OnInteractableStateChanged.AddDynamic(this,
-		&AControllerBox::SpeedUpButtonStateChanged);
-
-	SlowDownButtonActor->OnInteractableStateChanged.AddDynamic(this,
-		&AControllerBox::SlowDownButtonStateChanged);
-
-	StartStopButtonActor->OnInteractableStateChanged.AddDynamic(this,
-		&AControllerBox::StartStopButtonStateChanged);
+	for (UIsdkRoundedButtonComponent* Button : Buttons)
+	{
+		if (Button && Button->GetPokeInteractable())
+		{
+			Button->GetPokeInteractable()->GetInteractionPointerEventDelegate().AddUniqueDynamic(
+				this, &AControllerBox::HandleButtonPointerEvent);
+		}
+	}
 
 	// useful for testing button actions on PC
 	// in case hand tracking doesn't work in editor
@@ -221,76 +191,42 @@ void AControllerBox::HookUpButtonEvents()
 #endif
 }
 
-void AControllerBox::SmokeButtonStateChanged(const FInteractableStateArgs&
-		StateArgs)
+void AControllerBox::HandleButtonPointerEvent(const FIsdkInteractionPointerEvent& PointerEvent)
 {
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState)
+	// Select is the press. Hover, Unselect and the rest only drive the button's own visuals.
+	if (PointerEvent.Type != EIsdkPointerEventType::Select)
 	{
-		TrainBlowSmoke();
+		return;
+	}
+	for (int32 Index = 0; Index < Buttons.Num(); ++Index)
+	{
+		if (Buttons[Index] && Buttons[Index]->GetPokeInteractable() == PointerEvent.Interactable.GetObject())
+		{
+			PressButton(static_cast<EControllerBoxButton>(Index));
+			return;
+		}
 	}
 }
 
-void AControllerBox::WhistleButtonStateChanged(const FInteractableStateArgs&
-		StateArgs)
+void AControllerBox::PressButton(EControllerBoxButton Button)
 {
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState)
+	switch (Button)
 	{
-		TrainBlowWhistle();
-	}
-}
-
-void AControllerBox::GoCowGo(const FInteractableStateArgs&
-		StateArgs)
-{
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState)
-	{
-		CowMoo();
-	}
-}
-
-void AControllerBox::HandStyleButtonStateChanged(const FInteractableStateArgs&
-		StateArgs)
-{
-	FindHandsVisualizationSwitcher();
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState && IsValid(HandsVisSwitcher))
-	{
-		HandsVisSwitcher->SwitchHandsVisualization();
-	}
-}
-
-void AControllerBox::ReverseButtonStateChanged(const FInteractableStateArgs&
-		StateArgs)
-{
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState)
-	{
-		TrainReverse();
-	}
-}
-
-void AControllerBox::SpeedUpButtonStateChanged(const FInteractableStateArgs&
-		StateArgs)
-{
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState)
-	{
-		TrainSpeedUp();
-	}
-}
-
-void AControllerBox::SlowDownButtonStateChanged(const FInteractableStateArgs&
-		StateArgs)
-{
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState)
-	{
-		TrainSlowDown();
-	}
-}
-
-void AControllerBox::StartStopButtonStateChanged(const FInteractableStateArgs&
-		StateArgs)
-{
-	if (StateArgs.NewInteractableState == EInteractableState::ActionState)
-	{
-		StartStopTrain();
+	case EControllerBoxButton::Smoke:     TrainBlowSmoke(); break;
+	case EControllerBoxButton::Whistle:   TrainBlowWhistle(); break;
+	case EControllerBoxButton::MooCow:    CowMoo(); break;
+	case EControllerBoxButton::HandStyle:
+		FindHandsVisualizationSwitcher();
+		if (IsValid(HandsVisSwitcher))
+		{
+			HandsVisSwitcher->SwitchHandsVisualization();
+		}
+		break;
+	case EControllerBoxButton::Reverse:   TrainReverse(); break;
+	case EControllerBoxButton::SpeedUp:   TrainSpeedUp(); break;
+	case EControllerBoxButton::SlowDown:  TrainSlowDown(); break;
+	case EControllerBoxButton::StartStop: StartStopTrain(); break;
+	default: break;
 	}
 }
 
@@ -410,3 +346,5 @@ FVector AControllerBox::GetHMDPosition()
 	FVector TransformedPos = PlayerTransform.TransformPosition(DevicePosition);
 	return TransformedPos;
 }
+
+#undef LOCTEXT_NAMESPACE

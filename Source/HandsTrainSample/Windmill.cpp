@@ -7,9 +7,8 @@ LICENSE file in the root directory of this source tree.
 */
 
 #include "Windmill.h"
-#include "CollidableInteractable.h"
 #include "SelectionCylinderHelper.h"
-#include "InteractableTool.h"
+#include "SelectRelayComponent.h"
 #include <cmath>
 
 AWindmill::AWindmill()
@@ -22,6 +21,8 @@ AWindmill::AWindmill()
 
 	SelectionCylinderHelper =
 		CreateDefaultSubobject<USelectionCylinderHelper>(FName(TEXT("SelectionCylinderHelper")));
+
+	SelectRelay = CreateDefaultSubobject<USelectRelayComponent>(FName(TEXT("SelectRelay")));
 
 	Base = CreateDefaultSubobject<UStaticMeshComponent>(FName(TEXT("Base")));
 	Base->SetupAttachment(RootComponent);
@@ -47,28 +48,13 @@ void AWindmill::BeginPlay()
 {
 	Super::BeginPlay();
 
-	CollidableLogic = GetWorld()->SpawnActor<ACollidableInteractable>(
-		CollidableInteractableBP,
-		CollidableInteractAnchor->GetComponentLocation(),
-		CollidableInteractAnchor->GetComponentRotation());
-	CollidableLogic->AttachToActor(this,
-		FAttachmentTransformRules::KeepWorldTransform);
-
-	CollidableLogic->OnInteractableStateChanged.AddDynamic(this,
-		&AWindmill::InteractableStateChanged);
-
+	SelectRelay->OnSelected.AddUniqueDynamic(this, &AWindmill::HandleSelected);
 	SelectionCylinderHelper->Initialize(SelectionMesh);
 }
 
-void AWindmill::InteractableStateChanged(const FInteractableStateArgs& StateArgs)
+void AWindmill::HandleSelected(FName /*Method*/)
 {
-	bool bInActionState = StateArgs.NewInteractableState == EInteractableState::ActionState;
-	if (bInActionState)
-	{
-		NewMoveState(!IsMoving);
-	}
-
-	ToolInteractingWithMe = StateArgs.NewInteractableState > EInteractableState::Default ? StateArgs.Tool : nullptr;
+	NewMoveState(!IsMoving);
 }
 
 void AWindmill::Tick(float DeltaTime)
@@ -78,15 +64,9 @@ void AWindmill::Tick(float DeltaTime)
 	RotationAngle = fmod(RotationAngle, 360.0f);
 	BladesMesh->SetRelativeRotation(OriginalRotation * FRotator(0, RotationAngle, 0).Quaternion());
 
-	if (ToolInteractingWithMe == nullptr)
-	{
-		SelectionCylinderHelper->SetSelectionState(ESelectionState::Off);
-	}
-	else
-	{
-		SelectionCylinderHelper->SetSelectionState(
-			(ToolInteractingWithMe->GetCurrInputState() == EToolInputState::PrimaryInputDown || ToolInteractingWithMe->GetCurrInputState() == EToolInputState::PrimaryInputDownStay)
-				? ESelectionState::Highlighted
-				: ESelectionState::Selected);
-	}
+	// Same look as before: pointed at shows the cylinder, pinching brightens it
+	SelectionCylinderHelper->SetSelectionState(
+		SelectRelay->IsSelected() ? ESelectionState::Highlighted
+		: SelectRelay->IsHovered() ? ESelectionState::Selected
+		: ESelectionState::Off);
 }

@@ -9,14 +9,9 @@ LICENSE file in the root directory of this source tree.
 #pragma once
 
 #include "CoreMinimal.h"
+#include "IsdkPointables.h"
 #include "ProductHistorySubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
-
-// Meta XR Interaction SDK (OculusInteraction plugin): the pointer event payload and the pointable interface.
-// If the first build can't find one of these, search the installed plugin for FIsdkInteractionPointerEvent and
-// UIsdkIPointable and fix the path here. Nothing else in the project includes Interaction SDK headers for the bridge.
-#include "StructTypes.h"
-#include "Interaction/Pointable/IsdkIPointable.h"
 
 #include "ValidatorBridgeSubsystem.generated.h"
 
@@ -79,9 +74,6 @@ public:
 
 	/** The actor a report about Actor names: the first ValidatorTarget-tagged actor up the chain, else the root. */
 	static AActor* ResolveReportedActor(AActor* Actor);
-
-	/** The method name for an Interaction SDK interactable, from its native class name: Poke, Ray, Grab, ... */
-	static FName MethodFromInteractable(const UObject* Interactable);
 
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;

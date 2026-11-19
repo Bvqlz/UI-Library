@@ -41,14 +41,28 @@
    - Any other source reports with one call: `UValidatorBridgeSubsystem::Report(this, Actor, Method)` (C++ or Blueprint).
 4. **Project setup.** The Interaction SDK plugin (`OculusInteraction`) becomes required: enabled in `HandsTrainSample.uproject` and listed in the sample's `Build.cs`. Docs are updated.
 
-### Phase 2: migrate the sample scene (next)
+### Phase 2: migrate the sample scene (in progress, branch `refactor/isdk-scene-phase2`)
 
-The sample scene is only there to test the validator. It is changed to use the Interaction SDK:
+The sample scene is only there to test the validator. It is changed to use the Interaction SDK.
 
-1. Add `IsdkRayInteractable` to the windmill and the crossing, `IsdkPokeInteractable` (or the SDK's rounded button prebuilt) to the controller box buttons, and grab interactables to the furniture.
-2. Replace the pawn's custom tools (`BP_InteractableToolsManager`, poke and ray tools) with the SDK's hand and controller rigs.
-3. Point the wrist menu and toolkit at SDK poke buttons.
-4. Re-run the two README test tasks (select the windmill, place a chair) on desktop and on a Quest, and add the CSVs to `docs/validator/test-results`.
+**Done in code:**
+
+1. **`USelectRelayComponent`** (new, in the sample). Add it next to any Interaction SDK interactables on an actor. It listens to their pointer events and raises `OnSelected(Method)`, `OnUnselected`, `OnHoverStarted` and `OnHoverEnded`, counting pointers so two hands or a hand and a controller don't double-fire. Gameplay code reacts to it and never needs to know which interaction was used. It replaces the `AInteractable` / `AInteractableTool` state machine for scene objects.
+2. **`IsdkPointables`** (new). The one file that names the Interaction SDK pointer headers, with helpers shared by the bridge and the relay (find a pointable, get the method).
+3. **Windmill and crossing.** They no longer spawn the custom `ACollidableInteractable`. Each has a `SelectRelay`: selecting the windmill starts or stops the blades, and selecting the crossing rings it. The selection cylinder looks the same as before: shown on hover, brighter while pinching.
+4. **Controller box.** The eight custom `AInteractableButton` actors are replaced by Meta's rounded poke buttons (`UIsdkRoundedButtonComponent`), created at BeginPlay on the same FBX anchors, with labels. A poke `Select` runs the button's action. A new `PressButton` runs an action from C++ or Blueprint. The editor keyboard shortcuts still work. The buttons are components of the controller box, so the validator reports the **ControllerBox**, as before.
+
+**Still to do in the editor** (Blueprint and map assets, which can't be edited from code):
+
+1. **Pawn.** Give the pawn the Interaction SDK rigs, as in Meta's *Getting Started with Interaction SDK*: a left and a right `MotionControllerComponent`, each with an `IsdkHandRigComponent` and an `IsdkControllerRigComponent`, plus the `IMC_IsdkHand` and `IMC_IsdkControllerAnimation` input mapping contexts. Remove `BP_InteractableToolsManager` from the level.
+2. **Windmill (`BP_Windmill`) and crossing (`BP_XingPost`).** Add an `IsdkRayInteractable`, with its pointable surface, at `CollidableInteractAnchor`. Delete the now-unused `CollidableInteractableBP` default if the editor flags it.
+3. **Controller box (`BP_ControllerBox`).** Play once and check the buttons face the user. If they don't, set **Buttons → Button Rotation Offset** (and **Button Size**). Delete the now-unused `InteractableButtonBP` default if the editor flags it.
+4. **Check.** Re-run the two README test tasks (select the windmill, place a chair) on desktop and on a Quest, and add the CSVs to `docs/validator/test-results`.
+
+**Still to do in code:**
+
+1. **Furniture tools.** `AWristMenu`, `AProductPlacer` and `AProductEditTools` still do their own fingertip poke, pinch and pointing ray through `HandPointerUtils`, and the wrist toolkit (`AWristToolkit`, in `HandTrackingTools`) has its own poke items. Move these to Interaction SDK poke buttons, ray interactables and grabbables. This is the largest piece (about 1,900 lines), so it gets its own branch.
+2. **Hand visuals.** The controller box's hand-style button still uses `AHandsVisualizationSwitcher` from `HandTrackingTools`. Decide whether the SDK's hand visuals replace it.
 
 ### Phase 3: retire our gestures (after phase 2)
 
@@ -77,7 +91,8 @@ Phase 1 is done when:
 
 ## Risks and notes
 
-- **Not compiled yet.** Phase 1 was written without an Unreal build. The bridge uses three Interaction SDK names: the interface `IIsdkIPointable` / `UIsdkIPointable` and its `GetInteractionPointerEventDelegate()`, the struct `FIsdkInteractionPointerEvent` (with `Type` and `Interactable`), and the enum `EIsdkPointerEventType`. These names come from Meta's pointer events documentation and from Meta's Interaction SDK sample. The two include paths for them, at the top of `ValidatorBridgeSubsystem.h`, are the first thing to check on the first build.
-- **Existing selection tasks break until phase 2.** The windmill, crossing and controller box still use our custom interactables, which the bridge no longer listens to. An Event Task on them records no attempts until they have SDK interactables. The furniture placement task is not affected.
+- **Not compiled yet.** Phase 1 was written without an Unreal build. The bridge uses three Interaction SDK names: the interface `IIsdkIPointable` / `UIsdkIPointable` and its `GetInteractionPointerEventDelegate()`, the struct `FIsdkInteractionPointerEvent` (with `Type` and `Interactable`), and the enum `EIsdkPointerEventType`. These names come from Meta's pointer events documentation and from Meta's Interaction SDK sample. The two include paths for them, at the top of `Source/HandsTrainSample/IsdkPointables.h`, are the first thing to check on the first build.
+- **Existing selection tasks break until phase 2 is finished.** After phase 1, the windmill, crossing and controller box no longer counted. After the phase 2 code, the controller box counts again (its buttons are SDK buttons); the windmill and crossing count once their Blueprints get an `IsdkRayInteractable` (editor step 2). The furniture placement task is not affected.
+- **Phase 2 also uses Meta's prebuilt rounded button** (`IsdkRoundedButton.h`, module `OculusInteractionPrebuilts`). Its API (`UIsdkRoundedButtonComponent`, `ButtonSize`, `SetLabelText`, `SetLabelSize`, `GetPokeInteractable`) is taken from Meta's Interaction SDK sample, which builds its menu buttons the same way. Creating the buttons at runtime with `NewObject` and `RegisterComponent`, instead of in a constructor as Meta's sample does, is not yet tested.
 - **Attempt counts can drop slightly in the placement task.** A product that is placed and selected in the same frame used to count twice; it now counts once.
 - **The Interaction SDK is licensed and not committed.** Each developer installs it at `Plugins/MetaXRInteraction/OculusInteraction.uplugin`, as with the Meta XR plugin.

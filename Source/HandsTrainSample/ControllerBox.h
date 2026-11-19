@@ -10,21 +10,40 @@ LICENSE file in the root directory of this source tree.
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "InteractableButton.h"
+#include "IsdkRoundedButton.h"
 #include "ControllerBox.generated.h"
 
 class ATrainLocomotive;
 class ACowCar;
 class UStaticMeshComponent;
-class AInteractableButton;
 class AHandsVisualizationSwitcher;
 
+/** The eight controller box buttons. */
+UENUM(BlueprintType)
+enum class EControllerBoxButton : uint8
+{
+	Smoke,
+	Whistle,
+	MooCow,
+	HandStyle,
+	Reverse,
+	SpeedUp,
+	SlowDown,
+	StartStop,
+	Count UMETA(Hidden)
+};
+
 /**
- * Manages array of controller box buttons. This was created from an FBX
+ * Manages the controller box buttons. This was created from an FBX
  * via "File->Import Into Level..." because the scene graph of
  * ControllerBox.fbx must be respected (especially in relation to
- * button placement. The resulting blueprint created from the import
+ * button placement). The resulting blueprint created from the import
  * process was modified to accommodate this class.
+ *
+ * The buttons are Meta Interaction SDK rounded poke buttons (UIsdkRoundedButtonComponent), one per
+ * EControllerBoxButton, created at BeginPlay on the "<Name>ButtonAnchor" components of the Blueprint.
+ * A poke Select on a button runs its action. The validator bridge counts the same Select as an attempt
+ * and reports this ControllerBox, because the buttons are its own components.
  */
 UCLASS()
 class HANDSTRAINSAMPLE_API AControllerBox : public AActor
@@ -36,83 +55,29 @@ public:
 
 	virtual void Tick(float DeltaTime) override;
 
-	UFUNCTION(Category = "Button Events")
-	void SmokeButtonStateChanged(const FInteractableStateArgs& StateArgs);
+	/** Runs a button's action, the same as poking it. */
+	UFUNCTION(BlueprintCallable, Category = "Button Events")
+	void PressButton(EControllerBoxButton Button);
 
-	UFUNCTION(Category = "Button Events")
-	void WhistleButtonStateChanged(const FInteractableStateArgs& StateArgs);
-
-	UFUNCTION(Category = "Button Events")
-	void GoCowGo(const FInteractableStateArgs& StateArgs);
-
-	UFUNCTION(Category = "Button Events")
-	void HandStyleButtonStateChanged(const FInteractableStateArgs& StateArgs);
-
-	UFUNCTION(Category = "Button Events")
-	void ReverseButtonStateChanged(const FInteractableStateArgs& StateArgs);
-
-	UFUNCTION(Category = "Button Events")
-	void SpeedUpButtonStateChanged(const FInteractableStateArgs& StateArgs);
-
-	UFUNCTION(Category = "Button Events")
-	void SlowDownButtonStateChanged(const FInteractableStateArgs& StateArgs);
-
-	UFUNCTION(Category = "Button Events")
-	void StartStopButtonStateChanged(const FInteractableStateArgs& StateArgs);
+	/** The Interaction SDK button for an action, or null before the buttons exist. */
+	UIsdkRoundedButtonComponent* GetButton(EControllerBoxButton Button) const;
 
 protected:
 	virtual void BeginPlay() override;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Button Spawning")
-	TSubclassOf<AInteractableButton> InteractableButtonBP;
+	/** Button face size in cm. */
+	UPROPERTY(EditAnywhere, Category = "Buttons")
+	FVector2D ButtonSize = FVector2D(4.0, 4.0);
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	USceneComponent* SmokeButtonAnchorComp;
+	UPROPERTY(EditAnywhere, Category = "Buttons")
+	float ButtonLabelSize = 0.8f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	USceneComponent* WhistleButtonAnchorComp;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	USceneComponent* MooCowButtonAnchorComp;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	USceneComponent* HandStyleButtonAnchorComp;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	USceneComponent* ReverseButtonAnchorComp;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	USceneComponent* SpeedUpButtonAnchorComp;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	USceneComponent* SlowDownButtonAnchorComp;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	USceneComponent* StartStopButtonAnchorComp;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	AInteractableButton* SmokeButtonActor;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	AInteractableButton* WhistleButtonActor;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	AInteractableButton* MooCowButtonActor;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	AInteractableButton* HandStyleButtonActor;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	AInteractableButton* ReverseButtonActor;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	AInteractableButton* SpeedUpButtonActor;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	AInteractableButton* SlowDownButtonActor;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Button Placement")
-	AInteractableButton* StartStopButtonActor;
+	/**
+	 * Button rotation relative to its anchor. The anchors come from the FBX and were oriented for the
+	 * old buttons; adjust this if the Interaction SDK buttons don't face the user.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Buttons")
+	FRotator ButtonRotationOffset = FRotator::ZeroRotator;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Distances")
 	float MaxDistanceFromHMDToLastPos;
@@ -169,9 +134,15 @@ private:
 	const static float TotalFollowDuration;
 	const static float HmdMovementThreshold;
 
-	void FindAnchors();
-	void SpawnButtonsAtAnchorPositions();
+	void CreateButtons();
 	void HookUpButtonEvents();
+
+	UFUNCTION()
+	void HandleButtonPointerEvent(const FIsdkInteractionPointerEvent& PointerEvent);
+
+	/** Indexed by EControllerBoxButton. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UIsdkRoundedButtonComponent>> Buttons;
 
 	void StartStopTrain();
 	void TrainBlowSmoke();

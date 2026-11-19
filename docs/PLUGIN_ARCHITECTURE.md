@@ -173,7 +173,7 @@ Do the setup in the [Software Setup Strategy](SOFTWARE_SETUP_STRATEGY.md#5-tutor
 
 Example: "Select the windmill."
 
-> **Until phase 2 of the [Interaction SDK story](stories/ISDK_REFACTOR.md):** the windmill, crossing and controller box still use the old custom interactables, which the bridge no longer counts. Before this option works, add an **IsdkRayInteractable** to the windmill (for a button, an **IsdkPokeInteractable**), and play with a pawn that has the Interaction SDK rigs.
+> **During phase 2 of the [Interaction SDK story](stories/ISDK_REFACTOR.md):** the controller box buttons are already Interaction SDK poke buttons. The windmill and crossing react through a `SelectRelay` component, but their Blueprints still need an **IsdkRayInteractable** before they can be selected. Play with a pawn that has the Interaction SDK rigs.
 
 1. Drag an **Event Task** into the level.
 2. In **Details**:
