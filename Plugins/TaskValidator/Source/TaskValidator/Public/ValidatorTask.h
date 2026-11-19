@@ -6,11 +6,11 @@
 #include "ValidatorTask.generated.h"
 
 /**
- * Base class for one study task placed in a level. Subclasses decide what "done" means
- * and call MarkConditionMet(). The subsystem owns timing and counting.
+ * Base class for one study task placed in a level. Subclasses (C++ or Blueprint) decide what "done"
+ * means and call MarkConditionMet(). The subsystem owns timing and counting.
  * Only ticks while the task is running.
  */
-UCLASS(Abstract)
+UCLASS(Abstract, Blueprintable)
 class TASKVALIDATOR_API AValidatorTask : public AActor
 {
 	GENERATED_BODY()
@@ -34,9 +34,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Validator", meta = (MultiLine = true))
 	FText Instruction;
 
+	UFUNCTION(BlueprintPure, Category = "Validator")
 	bool IsTaskActive() const { return bTaskActive; }
 
-	/** Ends the running task as Completed. Call this from any C++ when the task's goal is reached. */
+	/** Ends the running task as Completed. Call this from C++ or Blueprint when the task's goal is reached. */
+	UFUNCTION(BlueprintCallable, Category = "Validator")
 	void MarkConditionMet();
 
 protected:
@@ -50,9 +52,18 @@ protected:
 	virtual void TickActiveTask(float DeltaSeconds) {}
 	virtual void OnInteraction(AActor* InteractedActor) {}
 
+	/** Blueprint hook: the task just started. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Validator", meta = (DisplayName = "On Task Begin"))
+	void ReceiveTaskBegin();
+
+	/** Blueprint hook: an interaction was counted as an attempt on this task. InteractedActor may be null. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Validator", meta = (DisplayName = "On Interaction"))
+	void ReceiveInteraction(AActor* InteractedActor, FName Method);
+
 private:
 	friend class UTaskValidatorSubsystem;
 	void BeginTask();
+	void HandleInteraction(AActor* InteractedActor, FName Method);
 	void EndTask(EValidatorTaskResult Result, FValidatorTaskRecord& InOutRecord);
 
 	bool bTaskActive = false;

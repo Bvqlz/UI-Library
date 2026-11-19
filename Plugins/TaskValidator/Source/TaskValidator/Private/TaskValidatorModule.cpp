@@ -63,6 +63,6 @@ namespace
 		TEXT("Debug only: count one interaction on the running task"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>&, UWorld* World)
 		{
-			if (UTaskValidatorSubsystem* S = SubsystemFor(World)) { S->NotifyInteraction(nullptr); }
+			if (UTaskValidatorSubsystem* S = SubsystemFor(World)) { S->NotifyInteraction(nullptr, TEXT("Console")); }
 		}));
 }

@@ -182,13 +182,13 @@ This is sample content built on the hand UI above:
 #### Plugins/TaskValidator: the validator
 
 - **`UTaskValidatorSubsystem`** lives on the game instance. It holds the participant ID, the running task, the timer and counters, and writes one CSV row per finished task to `Saved/ValidatorLogs/`.
-- **`AValidatorTask`** is the base for a task placed in a level. `ATargetZoneTask` ("put it in this box") and `AEventTask` ("done when this happens, or when this actor is touched") are ready to use.
+- **`AValidatorTask`** is the base for a task placed in a level, in C++ or Blueprint. `ATargetZoneTask` ("put it in this box") and `AEventTask` ("done when this happens, or when this actor, or an actor with this tag, is touched") are ready to use.
 - **`ATaskValidatorDirector`** is placed once per level. It starts the session and gives the administrator keys (`N` next, `H` intervention, `X` abandon) and an on-screen overlay.
-- Its only input is `UTaskValidatorSubsystem::ReportInteraction(this, Actor)`. It has no XR dependency.
+- Its only input is `UTaskValidatorSubsystem::ReportInteraction(this, Actor, Method)`, callable from C++ or Blueprint. It has no XR dependency.
 
 #### Source/HandsTrainSample: the bridge and the test task
 
-- **`UValidatorBridgeSubsystem`** is a world subsystem with no setup. It listens to the hand tracker's events (an interactable entering its action state, a toolkit item poked, a panel button pressed, a product selected, a product edit applied) and calls `ReportInteraction`. For interactables the sample spawns at runtime, it reports the placed owner (the windmill, the crossing or the controller box) so a task can name it.
+- **`UValidatorBridgeSubsystem`** is a world subsystem with no setup. It binds to every Meta Interaction SDK interactable (any `IIsdkIPointable`: poke, ray, grab) and counts each `Select` pointer event, with the method (`Poke`, `Ray`, `Grab`). It also listens to two sample-content events (a product selected, a product edit applied). It calls `ReportInteraction`, reporting the placed owner of an interactable so a task can name it. See [the Interaction SDK story](stories/ISDK_REFACTOR.md).
 - **`AProductPlacementTask`** is the sample's initial test task, "place a chair in the marked area". It is a normal validator task that lives in the sample because it depends on the sample's furniture. Implementing your first test task as an existing task within the sample is the intended workflow; see [PLUGIN_ARCHITECTURE.md](PLUGIN_ARCHITECTURE.md#5-tutorial-implement-your-initial-test-task-as-an-existing-task-within-the-sample).
 
 ### 4.3 One interaction end to end: placing a chair
@@ -285,9 +285,9 @@ The plugin is licensed and not in the repository. The project does not compile w
 
 1. Download **Meta XR plugin v207** from the [Unreal Engine 5 Integration page](https://developers.meta.com/vr/downloads/package/unreal-engine-5-integration/). Choose version 207 if a newer one is shown.
 2. Extract it so this file exists: `Plugins/MetaXR/OculusXR.uplugin`.
-3. Optional: the Meta Interaction SDK goes in `Plugins/MetaXRInteraction/OculusInteraction.uplugin`. No project code uses it today.
+3. Download the **Meta XR Interaction SDK** plugin for the same release from the same page, and extract it so this file exists: `Plugins/MetaXRInteraction/OculusInteraction.uplugin`. It is required: the validator bridge counts its interactions.
 
-**Check:** `Plugins/MetaXR/OculusXR.uplugin` exists, and its `EngineVersion` matches 5.8. `git status` must still be clean, because `/Plugins/` is ignored.
+**Check:** `Plugins/MetaXR/OculusXR.uplugin` and `Plugins/MetaXRInteraction/OculusInteraction.uplugin` exist, and its `EngineVersion` matches 5.8. `git status` must still be clean, because `/Plugins/` is ignored.
 
 ### Step 6: Build and open the project
 
@@ -375,7 +375,7 @@ Open `HandsTrainSample.sln` and continue from step 6.
 ### 6.1 What happens when the project builds
 
 1. Unreal Build Tool reads `HandsTrainSample.uproject`. It finds one game module, `HandsTrainSample` (type Runtime, default loading phase), and the plugin list, which includes our two project plugins.
-2. It resolves each plugin. `OculusXR` is looked up in `Plugins/MetaXR` (or the engine, in the Meta fork). If it is missing, the build fails with the plugin load error from [Troubleshooting](#9-troubleshooting). `HandTrackingTools` and `TaskValidator` are found in `Plugins/` and contribute their own modules (`HandTrackingTools`; `TaskValidator`, `TaskValidatorDemo`, `TaskValidatorEditor`).
+2. It resolves each plugin. `OculusXR` is looked up in `Plugins/MetaXR` (or the engine, in the Meta fork). If it is missing, the build fails with the plugin load error from [Troubleshooting](#9-troubleshooting). `OculusInteraction` is looked up in `Plugins/MetaXRInteraction` in the same way. `HandTrackingTools` and `TaskValidator` are found in `Plugins/` and contribute their own modules (`HandTrackingTools`; `TaskValidator`, `TaskValidatorEditor`).
 3. It compiles each module with its own dependencies, plugins first. `HandTrackingTools` needs `OculusXRInput` and `HeadMountedDisplay` publicly. `TaskValidator` needs only engine modules. The game module then compiles with `HandTrackingTools` and `TaskValidator` added to its dependencies in `HandsTrainSample.Build.cs`.
 4. Unreal Header Tool generates `*.generated.h` for every `UCLASS`, `USTRUCT`, `UENUM` and delegate. This is why a header edit can force a wide rebuild.
 

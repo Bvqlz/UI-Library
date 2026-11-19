@@ -9,6 +9,6 @@ public class TaskValidatorEditor : ModuleRules
 		// Editor-only: adds a "Task Validator" tab to the Place Actors panel.
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"Core", "CoreUObject", "Engine", "UnrealEd", "PlacementMode", "Slate", "SlateCore",
-			"TaskValidator", "TaskValidatorDemo" });
+			"TaskValidator" });
 	}
 }

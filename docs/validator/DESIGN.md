@@ -20,16 +20,15 @@ The validator records how participants do on study tasks. It's an Unreal C++ plu
 | **`UTaskValidatorSubsystem`** | The core. One per game. Holds the participant ID, which task is running, the timer and counters. Writes one CSV row each time a task ends. |
 | **`AValidatorTask`** (base) | One study task placed in a level. Has `TaskGroup`, `TaskName`, `Order` and `Instruction`. Subclasses decide what "done" means. |
 | **`ATargetZoneTask`** | "Put the object here." An invisible box with no collision. Done when the target object is inside it, within the rotation tolerance, and has stayed still for `DwellSeconds`. |
-| **`AEventTask`** | The "boolean" template. Done when C++ code calls `MarkConditionMet()`, or when the participant interacts with one of its `CompleteOnInteractionWith` actors (selection tasks). |
+| **`AEventTask`** | The "boolean" template. Done when C++ or Blueprint calls `MarkConditionMet()`, or when the participant interacts with one of its `CompleteOnInteractionWith` actors or with any actor tagged `CompleteOnInteractionWithTag` (selection tasks). |
 | **`ATaskValidatorDirector`** | Placed once per study level. Starts the session and gives the administrator keys and an on-screen status readout. |
 | **`TaskValidatorEditor` module** | Editor only. Adds the **Task Validator** tab to the Place Actors panel. Without it, the actors don't show up anywhere obvious. |
-| **`TaskValidatorDemo` module** | **Placeholder only.** A simple pinch grab plus a 10 cm cube, so there's something to test with. In this repository the sample's real interactions replace it: `HandTrackingTools` raises the events and the sample's `UValidatorBridgeSubsystem` reports them. It can be deleted. |
 
 ## Lifecycle of one task
 
 1. The overlay shows **NEXT: Manipulation / CubeToMarker** and the instruction text. The administrator reads it aloud (Script A).
 2. The administrator presses **N**. The timer starts, the target resets to its start position, and the zone turns yellow.
-3. Each grab or selection calls `ReportInteraction`. Attempts go up by one, and the first one also sets time to first interaction.
+3. Each grab or selection calls `ReportInteraction`. Attempts go up by one, the first one also sets time to first interaction, and the method (Poke, Ray, Grab) is recorded.
 4. **H** logs an intervention, which marks the task as assisted (the study strategy section 7).
 5. The task ends in one of two ways:
    - **Completed:** the task's own condition is met (the zone turns green, then the task finishes after the dwell time).
@@ -38,20 +37,22 @@ The validator records how participants do on study tasks. It's an Unreal C++ plu
 
 ## CSV columns
 
-`ParticipantId, TaskGroup, Task, TaskOrder, Result, Assisted, Interventions, Attempts, TimeToFirstInteraction_s, TimeOnTask_s, StartUtc, EndUtc, PositionError_cm, RotationError_deg`
+`ParticipantId, TaskGroup, Task, TaskOrder, Result, Assisted, Interventions, Attempts, TimeToFirstInteraction_s, TimeOnTask_s, StartUtc, EndUtc, PositionError_cm, RotationError_deg, InteractionMethods`
+
+`InteractionMethods` was added at the end, so scripts that read columns by position keep working. It lists the distinct methods reported during the task, joined with `;` (for example `Ray;Poke`).
 
 A blank cell means "not applicable", for example no interaction ever happened, or the task has no rotation check. The first three columns match the linking labels in the study strategy section 11.
 
 ## Design choices (and why)
 
 1. **A plugin, not code hardcoded into one project.** It's the same amount of work, and it moves to the UI library unchanged.
-2. **Only C++, with no Blueprint dependency.** Everything is configured in the Details panel and code. Blueprint exposure (`UFUNCTION(BlueprintCallable)`) is easy to add later if the team wants it.
-3. **The core module has no XR dependency.** The validator doesn't know about hands. Interaction code reports to it with one line: `UTaskValidatorSubsystem::ReportInteraction(this, Actor)`. That lets it validate any interaction method (pinch, ray, distance grab) without changes, which matters because the team hasn't chosen one yet.
+2. **C++ core, usable from Blueprint.** Everything is configured in the Details panel and code. Because Interaction SDK setups are mostly Blueprint, `ReportInteraction` and `MarkConditionMet` are callable from Blueprint, task classes can be Blueprint subclasses, and tasks get **On Task Begin** and **On Interaction** Blueprint events.
+3. **The core module has no XR dependency.** The validator doesn't know about hands. Interaction code reports to it with one line: `UTaskValidatorSubsystem::ReportInteraction(this, Actor, Method)`, from C++ or Blueprint. That lets it validate any interaction method (pinch, ray, distance grab) without changes, which matters because the team hasn't chosen one yet. In this repository the interactions are the Meta Interaction SDK's, reported by the sample's bridge (see [the Interaction SDK story](../stories/ISDK_REFACTOR.md)).
 4. **The subsystem lives on the GameInstance.** A session survives level loads, so task groups can live in separate levels later.
 5. **The target zone uses geometry, not physics or collision.** It checks each tick whether the object's origin is inside the box. There are no collision channels to set up, and it never pushes objects around.
 6. **There's a dwell time plus a "settled" speed.** The object has to stay in the zone, nearly still (under 10 cm/s), for 0.5 s. This stops a fling through the zone, or holding it there in passing, from counting. Both values are tunable per task, and the study plans to tune tolerances in the pilot (section 5).
 7. **Timing uses the wall clock** (`FPlatformTime::Seconds`), not game time, so pauses and frame hitches don't distort the times.
-8. **Attempts count every reported interaction during the task**, with any object. That follows the definition in section 8: "how many times the participant grabbed or selected an object".
+8. **Attempts count every reported interaction during the task**, with any object. That follows the definition in section 8: "how many times the participant grabbed or selected an object". **One action counts once:** if two sources report the same actor in the same frame (a ray Select on a product and the placer's "product selected" event), the second is ignored, though its method is still recorded.
 9. **A row is appended as each task ends.** If the app crashes mid-session, you lose at most the task that was running.
 10. **Earlier logs are never overwritten.** If `P01_validator.csv` exists, the new one becomes `P01_validator_2.csv`. Pilot reruns can't destroy data.
 11. **Keys are polled directly** rather than going through Enhanced Input mappings, so the plugin works in any project with no input setup. The keys can be changed in the Details panel.
@@ -63,5 +64,4 @@ A blank cell means "not applicable", for example no interaction ever happened, o
 - The admin overlay uses engine debug text. It's fine for Development builds but doesn't show in Shipping builds. That's OK for a study build.
 - There's no per-task "reset" key yet. If the administrator makes a mistake, press X (abandon) and note it.
 - TLX and admin notes stay in the study spreadsheet by design. The validator doesn't collect them.
-- The demo grab is deliberately crude: it has no hand poses, and it uses the palm's rotation for the held offset.
 - We could add an extra metric later: path length or hand travel distance during a task.

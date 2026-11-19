@@ -23,6 +23,10 @@ public class HandsTrainSample : ModuleRules
         // Only code in this module (the validator bridge and the sample's own tasks) connects them.
         PublicDependencyModuleNames.AddRange(new string[] { "HandTrackingTools", "TaskValidator" });
 
+        // Meta XR Interaction SDK (installed per machine at Plugins/MetaXRInteraction, see README.md).
+        // The validator bridge counts its poke, ray and grab Select events as attempts.
+        PublicDependencyModuleNames.Add("OculusInteraction");
+
         PrivateDependencyModuleNames.AddRange(new string[] {
             "HeadMountedDisplay", "OculusXRHMD", "XRBase" });
 

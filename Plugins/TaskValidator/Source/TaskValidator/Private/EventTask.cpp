@@ -9,7 +9,12 @@ AEventTask::AEventTask()
 
 void AEventTask::OnInteraction(AActor* InteractedActor)
 {
-	if (InteractedActor && CompleteOnInteractionWith.Contains(InteractedActor))
+	if (!InteractedActor)
+	{
+		return;
+	}
+	if (CompleteOnInteractionWith.Contains(InteractedActor) ||
+		(!CompleteOnInteractionWithTag.IsNone() && InteractedActor->ActorHasTag(CompleteOnInteractionWithTag)))
 	{
 		MarkConditionMet();
 	}

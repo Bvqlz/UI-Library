@@ -87,8 +87,10 @@ void ATaskValidatorDirector::DrawOverlay() const
 	{
 		const FValidatorTaskRecord& R = Subsystem->GetActiveRecord();
 		GEngine->AddOnScreenDebugMessage(BaseKey + 1, 0.f, FColor::Yellow,
-			FString::Printf(TEXT("RUNNING  %s / %s   %.1fs   attempts %d   help %d"),
-				*Active->TaskGroup, *Active->TaskName, Subsystem->GetActiveTaskElapsed(), R.Attempts, R.Interventions));
+			FString::Printf(TEXT("RUNNING  %s / %s   %.1fs   attempts %d   help %d   via %s"),
+				*Active->TaskGroup, *Active->TaskName, Subsystem->GetActiveTaskElapsed(), R.Attempts, R.Interventions,
+				R.InteractionMethods.IsEmpty() ? TEXT("-")
+					: *FString::JoinBy(R.InteractionMethods, TEXT(";"), [](const FName& Method) { return Method.ToString(); })));
 		GEngine->AddOnScreenDebugMessage(BaseKey + 2, 0.f, FColor::White,
 			FString::Printf(TEXT("%s = help    %s = participant stopped"), *InterventionKey.GetDisplayName().ToString(), *AbandonKey.GetDisplayName().ToString()));
 	}
