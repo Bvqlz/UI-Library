@@ -1,7 +1,5 @@
 # Design Doc: Object Lifecycle (Add and Remove Objects)
 
-Nov 19, 2026 · @Dragorang
-
 ## 1. Introduction
 
 ### 1.1 Purpose

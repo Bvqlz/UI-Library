@@ -1,6 +1,5 @@
 # Core Architecture: Object Manipulation
 
-Nov 19, 2026 · @Dennis Ray
 
 ## 1. Introduction
 
